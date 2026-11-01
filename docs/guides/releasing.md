@@ -97,4 +97,4 @@ Archives have sorted entries, fixed modes, zero ownership, recipe-commit timesta
 
 [Private sources](private-sources.md) covers access for checks. [Installing a release](installing.md) puts the tested archive on a server.
 
-Read the Platform's [server installation guide](https://github.com/BelimbingApp/bilibi/blob/main/docs/server-install.md) for a fresh server and [Software guide](https://github.com/BelimbingApp/bilibi/blob/main/apps/base/software/README.md) for install and Undo. GitHub documents [immutable releases](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases) and the [asset digest API](https://docs.github.com/en/rest/releases/assets).
+Read the Platform's [server installation guide](https://github.com/BelimbingProject/bilibi/blob/main/docs/server-install.md) for a fresh server and [Software guide](https://github.com/BelimbingProject/bilibi/blob/main/apps/base/software/README.md) for install and Undo. GitHub documents [immutable releases](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases) and the [asset digest API](https://docs.github.com/en/rest/releases/assets).

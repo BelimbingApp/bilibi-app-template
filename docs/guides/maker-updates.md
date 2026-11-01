@@ -7,14 +7,14 @@ Merge improvements from the maker into your application on a branch you can revi
 Your application has two remotes:
 
 - **`origin`**: your application repository, where you push and open pull requests.
-- **`upstream`**: the maker, `https://github.com/BelimbingApp/bilibi-app-maker.git`, where the wrapper, scripts, checks and these guides come from.
+- **`upstream`**: the maker, `https://github.com/BelimbingProject/bilibi-app-maker.git`, where the wrapper, scripts, checks and these guides come from.
 
 The checkouts in `sources/` have only `origin`: the URL saved in `setup.toml`, which build and check verify before saving versions. Never repoint it. To propose a change to a component you cannot push to, add your fork as another remote, for example `fork`, and push your branch there.
 
 Once per clone, add the maker and keep the GitHub CLI on your own repository:
 
 ```sh
-git remote add upstream https://github.com/BelimbingApp/bilibi-app-maker.git
+git remote add upstream https://github.com/BelimbingProject/bilibi-app-maker.git
 gh repo set-default YOUR-ORGANISATION/YOUR-APPLICATION
 ```
 
@@ -39,6 +39,20 @@ git merge --allow-unrelated-histories -s ours <maker-commit>
 ```
 
 Only record a commit whose changes you have really taken: Git will never offer them again.
+
+## Move from BelimbingApp to BelimbingProject
+
+The GitHub organisation was renamed from `BelimbingApp` to `BelimbingProject`. The old name is no longer ours and could be registered by someone else, so never trust it: no remote, URL, source or `setup.toml` entry should point at `BelimbingApp`. If yours does, change it:
+
+1. Point the Platform in `setup.toml` at `https://github.com/BelimbingProject/bilibi.git`.
+2. Point the maker remote at the new organisation:
+
+   ```sh
+   git remote set-url upstream https://github.com/BelimbingProject/bilibi-app-maker.git
+   ```
+
+3. Point each Domain or Extension URL you added at `BelimbingProject`, for example in `setup.toml` and in `./bilibi add` commands, then run setup again.
+4. Check that nothing still uses the old name: `grep -rn BelimbingApp .` should print nothing except this section.
 
 ## Update an older application workspace
 

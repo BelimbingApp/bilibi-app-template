@@ -16,4 +16,4 @@ An uploaded file remains operator supplied. Its checksum detects damaged bytes; 
 
 ## Where to go next
 
-[Settings](settings.md) explains each instance’s configuration. The Platform’s [server installation reference](https://github.com/BelimbingApp/bilibi/blob/main/docs/server-install.md) covers a fresh server and its [Software reference](https://github.com/BelimbingApp/bilibi/blob/main/apps/base/software/README.md) covers install and Undo.
+[Settings](settings.md) explains each instance’s configuration. The Platform’s [server installation reference](https://github.com/BelimbingProject/bilibi/blob/main/docs/server-install.md) covers a fresh server and its [Software reference](https://github.com/BelimbingProject/bilibi/blob/main/apps/base/software/README.md) covers install and Undo.

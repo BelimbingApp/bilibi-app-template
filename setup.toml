@@ -2,5 +2,5 @@ format = 1
 targets = ["x86_64-unknown-linux-gnu"]
 
 [platform]
-url = "https://github.com/BelimbingApp/bilibi.git"
+url = "https://github.com/BelimbingProject/bilibi.git"
 commit = "9c3fb25b681df93cf96e1114fbe90b47724f13e6"

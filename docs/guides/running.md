@@ -69,7 +69,7 @@ Run `./bilibi update` to receive changes published to your application branch. I
 Copy the install command from **Administration › System › Software** and run it from your application root:
 
 ```sh
-./bilibi add finance --kind domains --source https://github.com/BelimbingApp/bilibi-dom-finance --commit <recommended-commit>
+./bilibi add finance --kind domains --source https://github.com/BelimbingProject/bilibi-dom-finance --commit <recommended-commit>
 ```
 
 Give all three flags together. The commit must be a full lowercase 40-character ID. Finance mounts at `sources/platform/apps/domains/finance`; Extensions mount at `sources/platform/apps/extensions/<id>`. Without these flags, `add` uses the local Platform catalogue and the repository's default branch, as before.

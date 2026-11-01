@@ -22,7 +22,7 @@ import publish
 
 ROOT, PLATFORM, BUILD = recipe.ROOT, recipe.PLATFORM, recipe.BUILD
 RECORD_FILES = ('setup.toml', 'composition/manifest.txt', 'composition/Cargo.lock')
-OFFICIAL = re.compile(r'https://github\.com/BelimbingApp/[A-Za-z0-9][A-Za-z0-9_.-]*(?:\.git)?')
+OFFICIAL = re.compile(r'https://github\.com/BelimbingProject/[A-Za-z0-9][A-Za-z0-9_.-]*(?:\.git)?')
 
 
 def run(*args, cwd=ROOT, capture=False):
@@ -318,7 +318,7 @@ def add_explicit(component, kind, source, commit):
     if not re.fullmatch(r'[0-9a-f]{40}', commit):
         raise ValueError('--commit must be a full 40-character lowercase commit ID')
     if not OFFICIAL.fullmatch(source):
-        raise ValueError(f'{component} is not an official BelimbingApp repository; use the manual mounting guide')
+        raise ValueError(f'{component} is not an official BelimbingProject repository; use the manual mounting guide')
     recipe.materialize()
     hooks()
     folder = PLATFORM / 'apps' / kind / component
@@ -367,8 +367,8 @@ def add(component, kind=None, source=None, commit=None):
         raise ValueError(f'{component}: choose an unambiguous official Domain or Extension from the Software page')
     layer, facts = matches[0]
     url = facts['repository'].removesuffix('.git') + '.git'
-    if not re.fullmatch(r'https://github\.com/BelimbingApp/[A-Za-z0-9_.-]+\.git', url):
-        raise ValueError(f'{component}: the catalogue entry is not an official BelimbingApp repository')
+    if not re.fullmatch(r'https://github\.com/BelimbingProject/[A-Za-z0-9_.-]+\.git', url):
+        raise ValueError(f'{component}: the catalogue entry is not an official BelimbingProject repository')
     folder = PLATFORM / 'apps' / layer / component
     if folder.exists() or folder.is_symlink():
         raise ValueError(f'{folder}: already exists; local work left unchanged. Run ./bilibi status.')
@@ -618,7 +618,7 @@ def main():
                         metavar='{help,start,update,add,status,setup,check,build,release}')
     parser.add_argument('component', nargs='?')
     parser.add_argument('--kind', choices=('domains', 'extensions'), help='add: component mount kind; give with --source and --commit')
-    parser.add_argument('--source', help='add: official BelimbingApp repository URL from Software')
+    parser.add_argument('--source', help='add: official BelimbingProject repository URL from Software')
     parser.add_argument('--commit', help='add: exact full lowercase commit ID from Software')
     parser.add_argument('--yes', action='store_true', help='build/check: use all new pushed commits without asking')
     parser.add_argument('--tag', help='release: a new version, such as setup-v1.0.0')
@@ -636,7 +636,7 @@ def main():
         parser.error('Use ./bilibi add <component> [--kind domains|extensions --source <url> --commit <sha>]; other commands take no arguments')
     if args.command in (None, 'help'):
         print('This is a Bilibi application: your own product, built on Bilibi.\n'
-              'To change Bilibi itself, work in https://github.com/BelimbingApp/bilibi instead.\n\n'
+              'To change Bilibi itself, work in https://github.com/BelimbingProject/bilibi instead.\n\n'
               'Usage: ./bilibi <command>\n\n'
               'Run your application on this computer\n'
               '  start         Install anything missing and run the application. The first\n'

@@ -50,14 +50,14 @@ class AddTest(unittest.TestCase):
         self.platform = self.app / 'sources/platform'
         self.platform.mkdir(parents=True)
         self.git(self.platform, 'init')
-        self.git(self.platform, 'remote', 'add', 'origin', 'https://github.com/BelimbingApp/bilibi.git')
+        self.git(self.platform, 'remote', 'add', 'origin', 'https://github.com/BelimbingProject/bilibi.git')
         self.catalogue({})
         self.git(self.platform, 'add', '.')
         self.git(self.platform, 'commit', '-m', 'Platform fixture')
         head = self.git(self.platform, 'rev-parse', 'HEAD')
         (self.app / 'setup.toml').write_text(
             'format = 1\ntargets = ["x86_64-unknown-linux-gnu"]\n[platform]\n'
-            f'url = "https://github.com/BelimbingApp/bilibi.git"\ncommit = "{head}"\n')
+            f'url = "https://github.com/BelimbingProject/bilibi.git"\ncommit = "{head}"\n')
         self.folder = self.platform / 'apps/domains/finance'
         # Only the source allowlist is substituted. Clone, checkout, origin and
         # filesystem behavior use real local repositories and the command parser.
@@ -131,7 +131,7 @@ class AddTest(unittest.TestCase):
             (('--kind', 'domains'), 'go together; give all three or none'),
             (('--source', self.source, '--commit', self.first), 'go together; give all three or none'),
             (('--kind', 'domains', '--source', self.source, '--commit', 'main'), 'full 40-character lowercase commit ID'),
-            (('--kind', 'domains', '--source', 'https://github.com/other/finance', '--commit', self.first), 'not an official BelimbingApp repository'),
+            (('--kind', 'domains', '--source', 'https://github.com/other/finance', '--commit', self.first), 'not an official BelimbingProject repository'),
         ]:
             with self.subTest(args=args):
                 self.assertIn(message, self.add(*args, ok=False))
@@ -147,7 +147,7 @@ class AddTest(unittest.TestCase):
         self.assertIn('is not its own Git checkout', self.explicit(ok=False))
         self.folder.rmdir()
         self.explicit()
-        self.git(self.folder, 'remote', 'set-url', 'origin', 'https://github.com/BelimbingApp/other')
+        self.git(self.folder, 'remote', 'set-url', 'origin', 'https://github.com/BelimbingProject/other')
         self.assertIn('has a different origin; inspect it', self.explicit(ok=False))
         self.assertEqual(self.git(self.folder, 'rev-parse', 'HEAD'), self.first)
 
@@ -166,7 +166,7 @@ class AddTest(unittest.TestCase):
         self.assertEqual(self.git(self.platform / 'apps/extensions/finance', 'rev-parse', 'HEAD'), head)
 
     def test_source_without_git_suffix_is_savable(self):
-        source = 'https://github.com/BelimbingApp/finance'
+        source = 'https://github.com/BelimbingProject/finance'
         get_url = workspace.run
         def raw_origin(*args, **kwargs):
             if args[:3] == ('git', 'remote', 'get-url'):
