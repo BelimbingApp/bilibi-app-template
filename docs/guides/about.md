@@ -7,7 +7,7 @@ Your application has its own repository for its versions, automation and documen
 | You changed… | Commit it in | Send it to |
 | --- | --- | --- |
 | Your application: its recipe, automation or docs | This folder | `origin`, your repository |
-| Bilibi itself | `sources/platform/` | A pull request to [`BelimbingApp/bilibi`](https://github.com/BelimbingApp/bilibi), pushed from your fork |
+| Bilibi itself | `sources/platform/` | A pull request to [`BelimbingProject/bilibi`](https://github.com/BelimbingProject/bilibi), pushed from your fork |
 | A Domain or Extension | Its folder under `sources/platform/apps/` | That component's own repository |
 
 In `sources/`, leave each folder's `origin` as it is: `./bilibi` checks it against `setup.toml`. To send a pull request to a repository you can't push to, add your fork as another remote, such as `fork`, and push there.
@@ -19,7 +19,7 @@ Bilibi has three kinds of repository:
 | Repository | What it holds | Start there to |
 | --- | --- | --- |
 | `bilibi-app-maker` (this one) | Where every application starts: its starting files and the `./bilibi` commands | Make your own product |
-| [`bilibi`](https://github.com/BelimbingApp/bilibi) | Bilibi's source code: the Platform | Change Bilibi itself, or build a Domain or Extension for everyone |
+| [`bilibi`](https://github.com/BelimbingProject/bilibi) | Bilibi's source code: the Platform | Change Bilibi itself, or build a Domain or Extension for everyone |
 | Your application, such as `your-company/my-bilibi` | One product: the Bilibi, Domain and Extension versions it uses, and its releases | Work on your product, once you have made it |
 
 You clone the maker, and your clone becomes your application. It keeps the maker's working parts as they are, such as the `./bilibi` commands, the checks and the release scripts. You replace its sample parts with your own, such as the `YOUR-ORGANISATION` names in these guides. When the maker improves, you merge its changes into your application: see [Take maker updates](maker-updates.md#take-maker-updates).
@@ -32,11 +32,11 @@ Today the maker gives you a running Bilibi and the commands to build, check and 
 
 | Step | Today | Planned |
 | --- | --- | --- |
-| Choose business features | `./bilibi add <name>`, if you know the name | Pick from a list ([#11](https://github.com/BelimbingApp/bilibi-app-maker/issues/11)) |
-| Make it yours | Four Git commands, in [Start here](../../README.md#start-here) | `./bilibi own <owner/name>` ([#12](https://github.com/BelimbingApp/bilibi-app-maker/issues/12)) |
-| Use private Domains | Set up a GitHub App by hand, in [Private sources](private-sources.md#private-sources) | One command ([#13](https://github.com/BelimbingApp/bilibi-app-maker/issues/13)) |
-| Release and install | `./bilibi release --tag setup-vX.Y.Z` starts the release; [publish the draft and install it](releasing.md#release-your-setup) | Combine the remaining steps ([#14](https://github.com/BelimbingApp/bilibi-app-maker/issues/14)) |
-| Stay current | Merge maker updates and move the Platform, separately | `./bilibi upgrade` ([#15](https://github.com/BelimbingApp/bilibi-app-maker/issues/15)) |
+| Choose business features | `./bilibi add <name>`, if you know the name | Pick from a list ([#11](https://github.com/BelimbingProject/bilibi-app-maker/issues/11)) |
+| Make it yours | Four Git commands, in [Start here](../../README.md#start-here) | `./bilibi own <owner/name>` ([#12](https://github.com/BelimbingProject/bilibi-app-maker/issues/12)) |
+| Use private Domains | Set up a GitHub App by hand, in [Private sources](private-sources.md#private-sources) | One command ([#13](https://github.com/BelimbingProject/bilibi-app-maker/issues/13)) |
+| Release and install | `./bilibi release --tag setup-vX.Y.Z` starts the release; [publish the draft and install it](releasing.md#release-your-setup) | Combine the remaining steps ([#14](https://github.com/BelimbingProject/bilibi-app-maker/issues/14)) |
+| Stay current | Merge maker updates and move the Platform, separately | `./bilibi upgrade` ([#15](https://github.com/BelimbingProject/bilibi-app-maker/issues/15)) |
 
 ## Where to go next
 

@@ -50,7 +50,7 @@ The launcher reads only these lines from `.env`:
 
 You can leave all three commented out to use the defaults. If you select a backend port, choose a free one and set `BILIBI_DEV_HOST` as well. Selecting a port does not take over another checkout’s HTTPS address.
 
-A variable set in your shell wins over `.env`. Unknown lines are ignored with a message; invalid values stop the launcher. This file controls local startup. For the accepted values, HTTPS behavior and other shell settings, see the Platform’s [Local launcher reference](https://github.com/BelimbingApp/bilibi/blob/main/README.md#local-launcher). Its [application workspace reference](https://github.com/BelimbingApp/bilibi/blob/main/docs/application-workspaces.md) explains source and data locations.
+A variable set in your shell wins over `.env`. Unknown lines are ignored with a message; invalid values stop the launcher. This file controls local startup. For the accepted values, HTTPS behavior and other shell settings, see the Platform’s [Local launcher reference](https://github.com/BelimbingProject/bilibi/blob/main/README.md#local-launcher). Its [application workspace reference](https://github.com/BelimbingProject/bilibi/blob/main/docs/application-workspaces.md) explains source and data locations.
 
 ## Server instances
 
@@ -60,7 +60,7 @@ The server installation script, `install-server.sh`, writes each instance’s se
 
 The installation sets an initial role. After installation, change the role through **Instance settings** with a fresh 2FA code. Editing `BILIBI_ENV` in the server file does not change a role already saved in the app.
 
-Follow the Platform’s [server installation reference](https://github.com/BelimbingApp/bilibi/blob/main/docs/server-install.md) to create an instance or change its address. It describes the files, permissions, database and service commands.
+Follow the Platform’s [server installation reference](https://github.com/BelimbingProject/bilibi/blob/main/docs/server-install.md) to create an instance or change its address. It describes the files, permissions, database and service commands.
 
 ## Business settings
 

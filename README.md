@@ -6,7 +6,7 @@ The Bilibi app maker is the starting copy for your own application built on Bili
 
 ## When to use it
 
-Use Bilibi app maker to run your own Bilibi on your servers. For developing and contributing to Bilibi, use the [Platform repository](https://github.com/BelimbingApp/bilibi). 
+Use Bilibi app maker to run your own Bilibi on your servers. For developing and contributing to Bilibi, use the [Platform repository](https://github.com/BelimbingProject/bilibi). 
 
 > [!NOTE]
 > In your application, replace this introduction and **Start here** with your own introduction. The linked guides describe your application as they are.
@@ -16,7 +16,7 @@ Use Bilibi app maker to run your own Bilibi on your servers. For developing and 
 1. Clone the maker into a folder named after your product, and start it:
 
 ```sh
-git clone https://github.com/BelimbingApp/bilibi-app-maker my-bilibi
+git clone https://github.com/BelimbingProject/bilibi-app-maker my-bilibi
 cd my-bilibi
 ./bilibi start
 ```
