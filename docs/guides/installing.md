@@ -10,7 +10,7 @@ Download the `bilibi-setup-v1.0.0-x86_64-unknown-linux-gnu.tar.gz` asset from yo
 
 On the target Bilibi instance, open **Software → Releases**, upload that archive, review it, and confirm the install with a fresh 2FA code. Keep the same downloaded archive for Staging and Production. The existing installer handles backup, migration, switching, health checks, recovery and Undo.
 
-GitHub's automatic **Source code** archives are not installable releases. The separate `bilibi-installer-x86_64-unknown-linux-gnu` and `bilibi-server-tools.tar.gz` assets are for initial server setup or deliberate administrator upgrades. Ordinary application installs do not update the shared installer.
+GitHub's automatic **Source code** archives are not installable releases. The separate `bilibi-installer-x86_64-unknown-linux-gnu` and `bilibi-server-tools.tar.gz` assets are for initial server setup or deliberate administrator upgrades. Verify each one with `gh attestation verify`, the application repository, its `.github/workflows/release.yml` and the exact setup tag before running it; the Platform server-installation reference gives the complete command. Ordinary application installs do not update the shared installer.
 
 An uploaded file must carry valid GitHub build provenance too. Set and accept the application repository on the Software page before uploading; a private repository also needs its read token. If verification fails, download the asset from the release again or inspect the failed **Release setup** run. Do not bypass the check or rebuild on the server.
 
