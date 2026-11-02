@@ -8,17 +8,60 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  guard:
+    name: Tag is on the default branch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Require a version tag on the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^setup-v[0-9]+\.[0-9]+\.[0-9]+(-test)?$ ]] || {
+            echo 'Release tags must be setup-vX.Y.Z or setup-vX.Y.Z-test.' >&2
+            exit 1
+          }
+          git fetch --no-tags origin "+refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH"
+          git merge-base --is-ancestor "$GITHUB_SHA" "origin/$DEFAULT_BRANCH" || {
+            echo "Release tag $RELEASE_TAG does not point to a commit on $DEFAULT_BRANCH." >&2
+            exit 1
+          }
   # The tag contains the complete build record. Never choose newer source commits here.
   build:
+    needs: guard
     uses: ./.github/workflows/check.yml
     with:
       release_tag: ${{ github.ref_name }}
     secrets:
       SOURCE_READ_TOKEN: ${{ secrets.SOURCE_READ_TOKEN }}
       SOURCE_APP_PRIVATE_KEY: ${{ secrets.SOURCE_APP_PRIVATE_KEY }}
-  draft:
+  attest:
+    name: Attest every release asset
     needs: build
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: setup-release
+          path: dist
+      - name: Create GitHub build provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: dist/*
+  draft:
+    name: Publish the verified draft
+    needs: [build, attest]
+    runs-on: ubuntu-24.04
+    environment: release
     permissions:
       contents: write
     steps:

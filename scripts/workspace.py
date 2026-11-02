@@ -528,25 +528,13 @@ def release(tag):
     changed.update(run('git', 'diff', '--cached', '--name-only', '-z', capture=True).split('\0'))
     changed.update(run('git', 'ls-files', '--others', '--exclude-standard', '-z', capture=True).split('\0'))
     changed.discard('')
-    other = changed - set(RECORD_FILES)
-    if other:
-        raise ValueError('The application has changes outside the build record: '
-                         + ', '.join(sorted(other)) + '. Commit or remove them before releasing.')
+    if changed:
+        raise ValueError('Commit the successful build record, review it on the default branch, and push it before releasing. Changed files: '
+                         + ', '.join(sorted(changed)) + '.')
     if not successful_build_matches():
         raise ValueError('Run ./bilibi build first.')
     recipe.check_record()
     publish.check_new_tag(tag, ROOT)
-    if changed:
-        old = tomllib.loads(run('git', 'show', 'HEAD:setup.toml', capture=True))
-        current, _ = recipe.recipe()
-        before, after = entries(old), entries(current)
-        for name in sorted(before.keys() | after.keys()):
-            previous, following = before.get(name), after.get(name)
-            if previous != following:
-                print(f'{part_name(name)}: {previous["commit"][:7] if previous else "not included"} -> '
-                      f'{following["commit"][:7] if following else "removed"}', flush=True)
-        run('git', 'diff', '--stat', 'HEAD', '--', *RECORD_FILES)
-        run('git', 'commit', '--only', '-m', f'Record build versions for {tag}', '--', *RECORD_FILES)
     publish.start_release(tag, ROOT)
 
 

@@ -48,11 +48,11 @@ After the checks pass, start a release with a new application version:
 ./bilibi release --tag setup-v1.0.0
 ```
 
-Release shows which parts moved and commits only `setup.toml`, `composition/manifest.txt` and `composition/Cargo.lock` when they changed. It refuses other uncommitted application files and refuses to release unless the current record matches the last successful build or check. If there is no successful build of that record, run `./bilibi build` first. It then tags the saved record and pushes the tag to `origin`, starting the existing **Release setup** workflow. If the record was already committed, it tags that commit. Release never selects new source versions.
+After the build succeeds, commit `setup.toml`, `composition/manifest.txt` and `composition/Cargo.lock`, review that commit, and merge it into the application's default branch. `./bilibi release` refuses any uncommitted file, a commit outside the remote default branch, or a record that differs from the last successful build or check. It tags that reviewed record and pushes the tag to `origin`, starting **Release setup**. Release never selects or commits source versions.
 
 The setup version belongs to your repository. It is separate from the Platform and Domain versions. **Never move a published tag or replace a published asset.**
 
-**Release setup** repeats the combined gates, checks the compiled program's reported composition, packages it, and creates a draft release. Only the draft job has `contents: write`. It uploads every asset and compares each digest with GitHub's recorded SHA-256. A rerun refuses an existing release instead of replacing its files.
+**Release setup** runs only for a `setup-vX.Y.Z` tag whose commit is on the repository's default branch. It repeats the combined gates, checks the compiled program's reported composition, packages it, publishes SHA-256 checksums, creates GitHub build provenance for every asset, and creates a draft release through the `release` environment. Only the draft job has `contents: write`; only the attestation job can request an identity token and write attestations. It uploads every asset and compares each digest with GitHub's recorded SHA-256. A rerun refuses an existing release instead of replacing its files.
 
 Final publication also needs an authenticated GitHub CLI session and Node.js 20 or newer on your machine. Install the locked `gh-axi` helper:
 
@@ -61,7 +61,7 @@ npm ci --prefix scripts/github-tools --ignore-scripts --no-audit --no-fund
 export PATH="$PWD/scripts/github-tools/node_modules/.bin:$PATH"
 ```
 
-The owner publishes the verified draft as a separate final action. This keeps an administration credential out of Actions: checking GitHub's immutability setting requires administration read permission. Use your own authenticated `gh-axi` session, with that permission and permission to publish releases. In a clean checkout of the tagged commit, download all draft assets into an empty `dist/` folder:
+The owner publishes the verified draft as a separate final action. This keeps an administration credential out of Actions: checking GitHub's immutability setting requires administration read permission. Before publishing, confirm that every asset shows build provenance from this repository's `.github/workflows/release.yml`. Use your own authenticated `gh-axi` session, with that permission and permission to publish releases. In a clean checkout of the tagged commit, download all draft assets into an empty `dist/` folder:
 
 ```sh
 git checkout setup-v1.0.0
@@ -82,6 +82,8 @@ The script checks the tagged commit, local checksums, GitHub asset digests and r
 | `builder-packages.txt` | The builder's installed Debian package versions. |
 | `publication.json` | The build run link and actual compiler and Node versions. |
 | `SHA256SUMS` | SHA-256 for every other release asset. The app archive has a separate checksum list for its payload. |
+
+GitHub stores the signed provenance separately from the release assets. Servers verify each selected asset against that provenance, the application repository and `.github/workflows/release.yml` before they unpack or install it.
 
 `release.json` includes both `reference` and `commit` for containers because the existing upload preview and installer result use those different names. Extension identities are recorded and checked against the program; the current Platform upload preview does not display Extensions.
 

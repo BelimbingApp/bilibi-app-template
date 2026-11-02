@@ -251,14 +251,19 @@ class BuildRecordTest(WorkspaceFixture):
         self.command('build')
         (self.app / 'setup.toml').write_text((self.app / 'setup.toml').read_text() + '# changed after build\n')
         output = self.command('release', '--tag', 'setup-v1.2.3-test', ok=False)
-        self.assertEqual(output.strip(), 'Run ./bilibi build first.')
+        self.assertIn('Commit the successful build record', output)
 
-    def test_release_commits_record_only_and_pushes_existing_workflow_tag(self):
+    def test_release_requires_reviewed_record_and_pushes_existing_workflow_tag(self):
         head = self.move(self.domain)
         self.command('build', '--yes')
         record = self.record()
+        self.assertIn('Commit the successful build record',
+                      self.command('release', '--tag', 'setup-v1.2.3-test', ok=False))
+        self.git(self.app, 'add', *RECORD_FILES)
+        self.git(self.app, 'commit', '-m', 'Record reviewed build')
+        self.git(self.app, 'push', 'origin', 'HEAD:main')
         output = self.command('release', '--tag', 'setup-v1.2.3-test')
-        self.assertIn(f'finance: {self.domain_first[:7]} -> {head[:7]}', output)
+        self.assertNotIn(f'finance: {self.domain_first[:7]} -> {head[:7]}', output)
         self.assertEqual(set(self.git(self.app, 'diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD').splitlines()), set(RECORD_FILES))
         self.assertEqual(self.record(), record)
         self.assertEqual(self.git(self.app, 'status', '--porcelain'), '')
@@ -279,7 +284,7 @@ class BuildRecordTest(WorkspaceFixture):
                 if mode == 'staged_then_restored':
                     path.write_bytes(original)
                 before = self.snapshot()
-                self.assertIn('changes outside the build record', self.command('release', '--tag', 'setup-v1.2.3', ok=False))
+                self.assertIn('Commit the successful build record', self.command('release', '--tag', 'setup-v1.2.3', ok=False))
                 self.assertEqual(self.snapshot(), before)
                 self.git(self.app, 'restore', '--staged', 'notes')
                 if original is None:
@@ -289,6 +294,7 @@ class BuildRecordTest(WorkspaceFixture):
 
     def test_release_with_committed_record_does_not_make_empty_commit(self):
         self.command('build')
+        self.git(self.app, 'push', 'origin', 'HEAD:main')
         before = self.git(self.app, 'rev-parse', 'HEAD')
         self.command('release', '--tag', 'setup-v2.0.0-test')
         self.assertEqual(self.git(self.app, 'rev-parse', 'HEAD'), before)
@@ -298,6 +304,9 @@ class BuildRecordTest(WorkspaceFixture):
         self.git(self.author, 'push', 'origin', 'refs/tags/setup-v1.0.0')
         self.move(self.domain)
         self.command('build', '--yes')
+        self.git(self.app, 'add', *RECORD_FILES)
+        self.git(self.app, 'commit', '-m', 'Record reviewed build')
+        self.git(self.app, 'push', 'origin', 'HEAD:main')
         before = self.snapshot()
         self.assertIn('already exists on origin', self.command('release', '--tag', 'setup-v1.0.0', ok=False))
         self.assertEqual(self.snapshot(), before)

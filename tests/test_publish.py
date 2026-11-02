@@ -76,6 +76,9 @@ class StartReleaseTest(unittest.TestCase):
         self.git('config', 'user.name', 'A')
         self.git('commit', '-q', '--allow-empty', '-m', 'First')
         self.git('remote', 'add', 'origin', str(self.remote))
+        branch = self.git('branch', '--show-current').strip()
+        self.git('push', '-q', '-u', 'origin', branch)
+        subprocess.run(['git', 'symbolic-ref', 'HEAD', f'refs/heads/{branch}'], cwd=self.remote, check=True)
 
     def git(self, *args):
         return subprocess.run(['git', *args], cwd=self.work, text=True, stdout=subprocess.PIPE, check=True).stdout
@@ -85,11 +88,20 @@ class StartReleaseTest(unittest.TestCase):
         self.assertIn('setup-v1.0.0', self.git('ls-remote', '--tags', 'origin'))
 
     def test_failed_push_removes_the_local_tag_so_the_release_can_be_retried(self):
-        self.git('remote', 'set-url', 'origin', str(self.remote / 'missing'))
+        hook = self.remote / 'hooks/pre-receive'
+        hook.write_text('#!/bin/sh\nexit 1\n')
+        hook.chmod(hook.stat().st_mode | stat.S_IEXEC)
         with self.assertRaisesRegex(ValueError, 'was not published'):
             publish.start_release('setup-v1.0.0', self.work)
         self.assertEqual(self.git('tag', '--list'), '')
-        self.git('remote', 'set-url', 'origin', str(self.remote))
+        hook.unlink()
         publish.check_new_tag('setup-v1.0.0', self.work)
         publish.start_release('setup-v1.0.0', self.work)
         self.assertIn('setup-v1.0.0', self.git('ls-remote', '--tags', 'origin'))
+
+    def test_refuses_a_commit_not_on_the_default_branch(self):
+        self.git('checkout', '-q', '-b', 'unreviewed')
+        self.git('commit', '-q', '--allow-empty', '-m', 'Unreviewed')
+        with self.assertRaisesRegex(ValueError, 'reviewed commit on the default branch'):
+            publish.start_release('setup-v1.0.0', self.work)
+        self.assertEqual(self.git('tag', '--list'), '')

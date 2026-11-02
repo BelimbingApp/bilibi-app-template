@@ -88,7 +88,29 @@ def check_new_tag(tag, root):
         raise ValueError('Cannot check release tags on origin. Check your connection and Git access, then retry.')
 
 
+def require_default_branch(root):
+    remote = subprocess.run(['git', 'ls-remote', '--symref', 'origin', 'HEAD'], cwd=root,
+                            text=True, stdout=subprocess.PIPE, check=False)
+    match = re.search(r'^ref: refs/heads/([^\s]+)\s+HEAD$', remote.stdout, re.MULTILINE)
+    branch = match.group(1) if match else None
+    if remote.returncode == 0 and branch is None:
+        upstream = subprocess.run(['git', 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'],
+                                  cwd=root, text=True, stdout=subprocess.PIPE, check=False)
+        if upstream.returncode == 0 and upstream.stdout.strip().startswith('origin/'):
+            branch = upstream.stdout.strip().removeprefix('origin/')
+    if remote.returncode or branch is None:
+        raise ValueError('Cannot read the default branch from origin. Check your connection and Git access, then retry.')
+    fetched = subprocess.run(['git', 'fetch', '--quiet', '--no-tags', 'origin',
+                              f'+refs/heads/{branch}:refs/remotes/origin/{branch}'], cwd=root)
+    if fetched.returncode:
+        raise ValueError(f'Cannot read origin/{branch}. Check your connection and Git access, then retry.')
+    reviewed = subprocess.run(['git', 'merge-base', '--is-ancestor', 'HEAD', f'origin/{branch}'], cwd=root)
+    if reviewed.returncode:
+        raise ValueError(f'Release only a reviewed commit on the default branch ({branch}). Merge and push it first.')
+
+
 def start_release(tag, root):
+    require_default_branch(root)
     subprocess.run(['git', 'tag', tag], cwd=root, check=True)
     if subprocess.run(['git', 'push', 'origin', f'refs/tags/{tag}'], cwd=root).returncode != 0:
         subprocess.run(['git', 'tag', '-d', tag], cwd=root, check=True)
