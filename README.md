@@ -83,3 +83,13 @@ To install it on a server, follow [Release your setup](docs/guides/releasing.md#
 - [Private sources](docs/guides/private-sources.md): give checks access to private repositories.
 - [Taking maker updates](docs/guides/maker-updates.md): merge maker improvements and update older workspaces.
 - [Application repositories](docs/guides/about.md): where changes belong and what the maker provides.
+
+## File length
+
+CI warns about a Rust file over 800 lines that is new or got longer in your pull request. It fails only when the pull request body gives no reason for a listed file.
+
+- Under `## File length` in the pull request body, add one line per listed file: `<path>: keep: <reason>` or `<path>: split: <what was split along which responsibility>`.
+- Split by responsibility (one screen, one job), never by line count and never into `part1`/`part2`.
+- Run `python3 scripts/file-length-ratchet.py` to see the list locally; it compares your branch with `origin/main`.
+- Files under `fixtures/`, `examples/`, `migrations/` and `generated/` are skipped.
+- CI runs it as `.github/workflows/file-length.yml`; editing the body re-runs it. The same script is copied unchanged from the Bilibi Platform into every Bilibi repository.
