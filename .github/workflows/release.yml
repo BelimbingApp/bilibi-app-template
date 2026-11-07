@@ -1,5 +1,6 @@
 name: Release setup
 on:
+  workflow_dispatch:
   push:
     tags: ['setup-v*']
 permissions:
@@ -22,6 +23,10 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
+          if [[ $GITHUB_EVENT_NAME == workflow_dispatch ]]; then
+            echo 'Validate this branch without publishing a release.'
+            exit 0
+          fi
           [[ "$RELEASE_TAG" =~ ^setup-v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
             echo 'Release tags must be setup-vX.Y.Z.' >&2
             exit 1
@@ -36,7 +41,7 @@ jobs:
     needs: guard
     uses: ./.github/workflows/check.yml
     with:
-      release_tag: ${{ github.ref_name }}
+      release_tag: ${{ github.event_name == 'workflow_dispatch' && 'setup-v0.0.0-test' || github.ref_name }}
     secrets:
       SOURCE_READ_TOKEN: ${{ secrets.SOURCE_READ_TOKEN }}
       SOURCE_APP_PRIVATE_KEY: ${{ secrets.SOURCE_APP_PRIVATE_KEY }}
@@ -58,6 +63,7 @@ jobs:
         with:
           subject-path: dist/*
   draft:
+    if: github.event_name == 'push'
     name: Publish the verified draft
     needs: [build, attest]
     runs-on: ubuntu-24.04

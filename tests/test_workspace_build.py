@@ -1,4 +1,4 @@
-"""Build records use real Git remotes; fixtures replace only Docker and compilation."""
+"""Build records use real Git remotes; fixtures replace only tool installation and compilation."""
 import json
 import os
 from pathlib import Path
@@ -64,7 +64,7 @@ class BuildRecordTest(WorkspaceFixture):
         super().setUp()
         self.env.pop('CI', None)
         self.env.pop('GITHUB_ACTIONS', None)
-        for name in ('builder.toml', 'rust-toolchain.toml', '.dockerignore'):
+        for name in ('builder.toml', 'rust-toolchain.toml'):
             (self.app / name).write_text('# fixture\n')
         for name in ('build.sh', 'check.sh'):
             (self.app / 'scripts' / name).write_text(BUILD)

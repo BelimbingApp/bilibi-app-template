@@ -12,7 +12,7 @@ Clone your application's repository, then run:
 
 The same command works with or without an AI agent. It obtains missing sources, installs commit safeguards, prepares missing prerequisites, and starts the existing development launcher. Bilibi opens in your browser at the sign-in page when it is ready; sign in as `ai@agent.my` / `bilibi-dev`. If no browser opens, open the address the launcher prints. Set `BILIBI_OPEN_BROWSER=0` to stop it opening. Local HTTPS may need manual trust; the launcher keeps its loopback HTTP fallback.
 
-Use apt-based Ubuntu or Debian, including WSL2, with Git, Bash, Python 3.11 or newer, network access and installation privileges. Setup may ask for your sudo password. Ubuntu 22.04 and Debian 11 ship older Python; install Python 3.11 or newer as `python3`, or use Ubuntu 24.04 or Debian 12. Setup prepares Rust, Node, PostgreSQL 18 and cargo-watch through the Platform's existing scripts. Release commands also need Docker with a running daemon and the pinned builder described below.
+Use apt-based Ubuntu or Debian, including WSL2, with Git, Bash, Python 3.11 or newer, network access and installation privileges. Setup may ask for your sudo password. Ubuntu 22.04 and Debian 11 ship older Python; install Python 3.11 or newer as `python3`, or use Ubuntu 24.04 or Debian 12. Setup prepares Rust, Node, PostgreSQL 18 and cargo-watch through the Platform's existing scripts. Build and check also prepare the pinned native tools described in [Release your setup](releasing.md#build-requirements).
 
 ## Your workspace
 
@@ -56,8 +56,8 @@ Run commands from the application's root folder. `./bilibi help` shows the same 
 | `./bilibi add <name>` | Adds a Domain or Extension, such as `finance`. You can also paste the `add` command that the Software page shows. | When you want a new business feature. Run `start` again afterwards. |
 | `./bilibi status` | Lists the Platform, Domains and Extensions, with their branches, your uncommitted changes, and any difference from the saved versions | When you want to see what you have changed |
 | `./bilibi update` | Gets your team's latest pushed changes, and switches every source to the versions saved in `setup.toml` | Before you start work, to match your team |
-| `./bilibi check` | Asks about new commits, builds and tests against an empty test database, then saves your choices if it passes. Needs Docker. | Before a release |
-| `./bilibi build` | Asks about new commits, builds the release program, then saves your choices if it succeeds. Needs Docker. | When you make a release; see [Release your setup](releasing.md#release-your-setup) |
+| `./bilibi check` | Asks about new commits, builds and tests against an empty test database, then saves your choices if it passes. | Before a release |
+| `./bilibi build` | Asks about new commits, builds the release program, then saves your choices if it succeeds. | When you make a release; see [Release your setup](releasing.md#release-your-setup) |
 | `./bilibi release --tag setup-vX.Y.Z` | Commits the build record and starts the GitHub release workflow. Refuses other uncommitted application files, or a record that has no successful build or check. | After build and check pass |
 | `./bilibi setup` | Installs the tools and fetches the sources, without starting | When you want everything ready in advance |
 | `./bilibi help` | Shows the command list | Any time |

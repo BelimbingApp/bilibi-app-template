@@ -9,7 +9,8 @@ python3 "$root/scripts/recipe.py" restore
 cd "$platform"
 npm ci --prefix apps/base/ui/assets --no-audit --no-fund
 ./scripts/build-assets.sh --check
-cargo build --workspace --release --target "$target" --locked
+cargo zigbuild --workspace --release --target "$target.$BILIBI_GLIBC" --locked
+python3 "$root/scripts/native_builder.py" --verify-binaries
 python3 "$root/scripts/recipe.py" verify
 python3 "$root/scripts/recipe.py" status --binary "$CARGO_TARGET_DIR/$target/release/bilibi-web"
 echo "Built saved release programs in $CARGO_TARGET_DIR/$target/release. Run ./bilibi release --tag setup-vX.Y.Z to release them."

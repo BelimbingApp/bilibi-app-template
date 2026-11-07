@@ -64,7 +64,7 @@ Your folder now has two remotes. `origin` is your application, where you push. `
 > [!WARNING]
 > Clone the maker as shown. A copy made any other way, such as a downloaded ZIP file, has none of the maker's history, and maker updates can then no longer merge.
 
-4. Build and release the versions you tested. Commit and push changes in each part's own repository first. These commands need Docker:
+4. Build and release the versions you tested. Commit and push changes in each part's own repository first. These commands use the pinned native build tools:
 
 ```sh
 ./bilibi build
