@@ -38,9 +38,9 @@ jobs:
           sudo apt-get install -y postgresql-common
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get install -y python3-venv postgresql-18
-          sudo install -d -o postgres -g postgres "$RUNNER_TEMP/setup-postgres"
-          sudo -u postgres /usr/lib/postgresql/18/bin/initdb -D "$RUNNER_TEMP/setup-postgres" --auth=trust
-          sudo -u postgres /usr/lib/postgresql/18/bin/pg_ctl -D "$RUNNER_TEMP/setup-postgres" -l "$RUNNER_TEMP/setup-postgres/server.log" -o '-h 127.0.0.1 -p 5439' -w start
+          sudo install -d -o postgres -g postgres /var/lib/postgresql/setup-check
+          sudo -u postgres /usr/lib/postgresql/18/bin/initdb -D /var/lib/postgresql/setup-check --auth=trust
+          sudo -u postgres /usr/lib/postgresql/18/bin/pg_ctl -D /var/lib/postgresql/setup-check -l /var/lib/postgresql/setup-check/server.log -o '-h 127.0.0.1 -p 5439' -w start
           createdb -h 127.0.0.1 -p 5439 -U postgres setup_check
       - name: Test publisher helpers
         run: python3 -m unittest discover -s tests
@@ -113,6 +113,6 @@ jobs:
       - name: Stop the disposable PostgreSQL cluster
         if: always()
         run: |
-          if [ -f "$RUNNER_TEMP/setup-postgres/postmaster.pid" ]; then
-            sudo -u postgres /usr/lib/postgresql/18/bin/pg_ctl -D "$RUNNER_TEMP/setup-postgres" -m fast -w stop
+          if sudo test -f /var/lib/postgresql/setup-check/postmaster.pid; then
+            sudo -u postgres /usr/lib/postgresql/18/bin/pg_ctl -D /var/lib/postgresql/setup-check -m fast -w stop
           fi
