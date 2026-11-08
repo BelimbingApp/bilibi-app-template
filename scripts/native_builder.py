@@ -130,9 +130,6 @@ def prepare(config):
 
 
 def main():
-    if sys.argv[1:] == ['--check-memory']:
-        require_memory()
-        return
     config = read(ROOT / 'builder.toml')
     if sys.argv[1:] == ['--verify-binaries']:
         verify_binaries(config)

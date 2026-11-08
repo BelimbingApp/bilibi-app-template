@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Check actual commands, including tools installed during this same invocation.
 set -euo pipefail
-maker=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 cd -- "$1"
 ready() {
     local tool pg_bin
@@ -16,8 +15,6 @@ ready() {
         { [[ -n ${DATABASE_URL:-} ]] || [[ -x $pg_bin/initdb && -x $pg_bin/pg_ctl ]]; }
 }
 if ! ready; then
-    python3 "$maker/scripts/native_builder.py" --check-memory
-    export CARGO_BUILD_JOBS=2
     bash scripts/setup.sh
     # shellcheck source=/dev/null
     if [[ -f $HOME/.cargo/env ]]; then source "$HOME/.cargo/env"; fi
