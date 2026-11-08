@@ -501,10 +501,8 @@ def build(command, yes=False):
     selected, observed, before, accepted = choose_versions(yes)
     recipe.check_record()
     BUILD.mkdir(parents=True, exist_ok=True)
-    # A stable native path lets consecutive build/check runs reuse Cargo output.
-    candidate = BUILD.with_name(BUILD.name + '-recipe')
-    candidate.mkdir()
-    try:
+    with tempfile.TemporaryDirectory(prefix=BUILD.name + '-recipe-', dir=BUILD.parent) as temp:
+        candidate = Path(temp)
         copy_build_files(candidate)
         env = candidate_environment()
         env['BILIBI_BUILD_DIR'] = str(BUILD)
@@ -521,8 +519,6 @@ def build(command, yes=False):
         if accepted:
             save_record(candidate, observed, before)
         mark_successful_build(candidate)
-    finally:
-        shutil.rmtree(candidate)
 
 
 def release(tag):

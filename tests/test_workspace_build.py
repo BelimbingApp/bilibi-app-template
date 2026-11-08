@@ -165,6 +165,15 @@ class BuildRecordTest(WorkspaceFixture):
         self.assertEqual(self.record(), self.initial)
         self.assertEqual(self.built()['domains'][0]['commit'], self.domain_first)
 
+    def test_leftover_candidate_neither_blocks_nor_is_removed(self):
+        leftover = self.app / 'build-recipe'
+        leftover.mkdir()
+        (leftover / 'marker').write_text('other workspace')
+        self.command('build')
+        self.assertEqual(self.built()['domains'][0]['commit'], self.domain_first)
+        self.assertEqual((leftover / 'marker').read_text(), 'other workspace')
+        self.assertEqual(sorted(p.name for p in self.app.glob('build-recipe*')), ['build-recipe'])
+
     def test_dirty_sources_are_refused_even_with_yes(self):
         for folder, path, name in ((self.domain, 'notes', 'finance'), (self.platform, 'notes', 'Platform'),
                                    (self.platform, 'Cargo.lock', 'Platform')):
