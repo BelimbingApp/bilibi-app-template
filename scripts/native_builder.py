@@ -33,12 +33,6 @@ def expect(name, actual, wanted):
         raise ValueError(f'{name} is {actual}; this recipe needs {wanted}. Install the pinned version and rerun ./bilibi setup.')
 
 
-def require_memory():
-    available = re.search(r'^MemAvailable:\s+(\d+)', Path('/proc/meminfo').read_text(), re.M)
-    if not available or int(available[1]) < 8 * 1024 * 1024:
-        raise ValueError('Build needs at least 8 GiB available memory. Free memory and rerun the command.')
-
-
 def binary_libraries(binary, baseline):
     """Inspect the distributed ELF itself, never the build host's libc."""
     symbols = output('objdump', '-T', str(binary))
@@ -149,8 +143,7 @@ def main():
     if sys.argv[1:] == ['--setup']:
         print('Native build tools match rust-toolchain.toml and builder.toml.')
         return
-    require_memory()
-    os.environ.update(CARGO_BUILD_JOBS='2', CARGO_INCREMENTAL='0', CARGO_PROFILE_RELEASE_STRIP='symbols',
+    os.environ.update(CARGO_INCREMENTAL='0', CARGO_PROFILE_RELEASE_STRIP='symbols',
                       BILIBI_GLIBC=config['glibc'], BILIBI_BUILD_DIR=str(BUILD),
                       CARGO_ZIGBUILD_CACHE_DIR=str(BUILD / 'zigbuild-cache'),
                       ZIG_GLOBAL_CACHE_DIR=str(BUILD / 'zig-cache'),
