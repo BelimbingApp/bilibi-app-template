@@ -21,7 +21,6 @@ jobs:
     timeout-minutes: 90
     env:
       BILIBI_CHECK_DATABASE_URL: postgresql://postgres@127.0.0.1:5439/setup_check
-      CARGO_BUILD_JOBS: '2'
       TMPDIR: ${{ github.workspace }}/build/tmp
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
