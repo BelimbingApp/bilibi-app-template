@@ -79,7 +79,7 @@ The script checks the tagged commit, local checksums, GitHub asset digests and r
 | `bilibi-installer-x86_64-unknown-linux-gnu` | The matching installer, outside the app archive. |
 | `bilibi-server-tools.tar.gz` | The matching server installation script, libraries, service templates and waiting page. |
 | `recipe.json` | Setup repository, tag and commit; every source URL and commit; Platform, Domains, Extensions, toolchain, builder, target and dynamic dependencies. |
-| `builder-packages.txt` | The build host's installed Debian package versions. |
+| `builder-packages.txt` | The build host's installed package versions (pacman on Arch, dpkg on Ubuntu and Debian). |
 | `publication.json` | The build run link, actual Rust, Node, Zig and cargo-zigbuild versions, and build host details. |
 | `SHA256SUMS` | SHA-256 for every other release asset. The app archive has a separate checksum list for its payload. |
 
@@ -92,6 +92,8 @@ GitHub stores the signed provenance separately from the release assets. Servers 
 Only Linux x86-64 (`x86_64-unknown-linux-gnu`) is supported by this maker today. `rust-toolchain.toml` pins Rust 1.99.0. `builder.toml` pins Node 24.6.0, Zig 0.14.1 and cargo-zigbuild 0.24.1, including download checksums. PostgreSQL 18 runs natively for check.
 
 Install the native prerequisites on Ubuntu or Debian: `sudo apt-get install build-essential binutils python3-venv curl postgresql-client-18`. PostgreSQL 18 packages may need the [PostgreSQL apt repository](https://www.postgresql.org/download/linux/ubuntu/). Run `./bilibi setup` to prepare the pinned tools. Setup uses Rust through rustup and installs the checked Node archive (including npm), Zig and cargo-zigbuild under the build directory. If a tool on your PATH has a different version, setup stops and names the required version. Build and check perform the same checks automatically.
+
+Arch Linux and Omarchy are supported too. Run `./bilibi setup`; it installs missing native prerequisites with pacman, including rustup, build tools, Python and PostgreSQL 18. Node and Zig keep the exact versions above, independently of Arch's rolling packages. If pacman offers a different PostgreSQL major, setup stops and asks for PostgreSQL 18 packages. Setup never creates a system PostgreSQL cluster.
 
 Local commands and the GitHub release workflow both call `scripts/builder.sh`. That wrapper prepares the native tools, records their actual versions and the host packages, limits Cargo to two jobs, and requires at least 8 GiB available memory. It keeps temporary compiler files under the build directory. The release workflow uses no containers; PostgreSQL runs as a disposable native cluster.
 

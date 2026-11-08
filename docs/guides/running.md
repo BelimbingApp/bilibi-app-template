@@ -12,7 +12,9 @@ Clone your application's repository, then run:
 
 The same command works with or without an AI agent. It obtains missing sources, installs commit safeguards, prepares missing prerequisites, and starts the existing development launcher. Bilibi opens in your browser at the sign-in page when it is ready; sign in as `ai@agent.my` / `bilibi-dev`. If no browser opens, open the address the launcher prints. Set `BILIBI_OPEN_BROWSER=0` to stop it opening. Local HTTPS may need manual trust; the launcher keeps its loopback HTTP fallback.
 
-Use apt-based Ubuntu or Debian, including WSL2, with Git, Bash, Python 3.11 or newer, network access and installation privileges. Setup may ask for your sudo password. Ubuntu 22.04 and Debian 11 ship older Python; install Python 3.11 or newer as `python3`, or use Ubuntu 24.04 or Debian 12. Setup prepares Rust, Node, PostgreSQL 18 and cargo-watch through the Platform's existing scripts. Build and check also prepare the pinned native tools described in [Release your setup](releasing.md#build-requirements).
+Use Ubuntu, Debian, Arch Linux or Omarchy, including Ubuntu or Debian on WSL2. You need Git, Bash, Python 3.11 or newer, network access and installation privileges. Setup may ask for your sudo password. Ubuntu 22.04 and Debian 11 ship older Python; install Python 3.11 or newer as `python3`, or use Ubuntu 24.04 or Debian 12.
+
+On Arch and Omarchy, setup installs missing prerequisites with pacman and performs a full system upgrade before installing packages. It uses rustup for the pinned Rust toolchain and downloads the same checked Node 24 and Zig versions used on Ubuntu and Debian. PostgreSQL must be version 18. An installed Node or Zig version that differs from the recipe stops setup with the required version; select that version on your PATH and rerun setup. The Platform's scripts prepare the remaining development tools, including cargo-watch. See [Release your setup](releasing.md#build-requirements) for the exact pins.
 
 ## Your workspace
 

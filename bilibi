@@ -3,7 +3,7 @@
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 if ! command -v python3 >/dev/null || ! python3 -c 'import tomllib' 2>/dev/null; then
-    echo 'Bilibi needs Python 3.11 or newer. Ubuntu 22.04 and Debian 11 need a newer Python; use Ubuntu 24.04 or Debian 12 (including WSL2).' >&2
+    echo 'Bilibi needs Python 3.11 or newer. Use Arch Linux, Omarchy, Ubuntu 24.04 or Debian 12 (including WSL2), or install a newer python3.' >&2
     exit 1
 fi
 # Setup can install Cargo during this invocation; the launch handoff also sources this.
