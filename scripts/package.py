@@ -11,6 +11,7 @@ import subprocess
 import tarfile
 
 import recipe
+import native_builder
 
 
 def json_bytes(value):
@@ -50,10 +51,11 @@ def main():
     toolchain = recipe.read(recipe.ROOT / 'rust-toolchain.toml')
     rust = recipe.run('rustc', '--version', capture=True).strip()
     node = recipe.run('node', '--version', capture=True).strip()
-    if rust.split()[1] != builder['rust'] or toolchain['toolchain']['channel'] != builder['rust'] or node != 'v' + builder['node']:
-        raise ValueError('Compiler or Node differs from builder.toml')
+    if rust.split()[1] != toolchain['toolchain']['channel'] or node != 'v' + builder['node']:
+        raise ValueError('Compiler or Node differs from rust-toolchain.toml or builder.toml')
     binary_dir = Path(os.environ.get('CARGO_TARGET_DIR', recipe.BUILD / 'target')) / recipe.TARGET / 'release'
     binary = binary_dir / 'bilibi-web'
+    libraries = native_builder.verify_binaries(builder)
     status = recipe.checked_status(binary)
     commit = recipe.run('git', 'rev-parse', 'HEAD', cwd=recipe.ROOT, capture=True).strip()
     if recipe.run('git', 'rev-list', '-1', args.tag, cwd=recipe.ROOT, capture=True).strip() != commit:
@@ -66,8 +68,10 @@ def main():
         'platform': {'version': record['platform_version'], 'commit': record['platform'], 'release': record.get('platform_tag')},
         'domains': [], 'extensions': [], 'status': status,
         'built_for': {'target': recipe.TARGET, 'os': 'linux', 'arch': 'x86_64',
-                      'system_library': recipe.run('getconf', 'GNU_LIBC_VERSION', capture=True).strip()},
-        'dynamic_dependencies': recipe.run('objdump', '-p', str(binary), capture=True),
+                      'system_library': 'glibc ' + builder['glibc'],
+                      'glibc_required': libraries['bilibi-web']['glibc_required']},
+        'dynamic_dependencies': libraries['bilibi-web']['dynamic_dependencies'],
+        'binaries': libraries,
         'cargo_lock_sha256': record['cargo_lock_sha256'],
     }
     for name, item in sorted(record.get('containers', {}).items()):
@@ -113,11 +117,12 @@ def main():
                 tool_files[relative] = (path.read_bytes(), 0o755 if path.suffix == '.sh' else 0o644)
     archive(output / 'bilibi-server-tools.tar.gz', tool_files, epoch)
     (output / 'recipe.json').write_bytes(json_bytes(metadata))
-    (output / 'builder-packages.txt').write_bytes(Path('/builder-packages.txt').read_bytes())
+    (output / 'builder-packages.txt').write_bytes((recipe.BUILD / 'evidence/builder-packages.txt').read_bytes())
     (output / 'publication.json').write_bytes(json_bytes({
         'format': 1, 'setup': setup,
         'run': f'{os.environ.get("GITHUB_SERVER_URL", "https://github.com")}/{args.repository}/actions/runs/{os.environ.get("GITHUB_RUN_ID", "local")}',
-        'attempt': os.environ.get('GITHUB_RUN_ATTEMPT'), 'rustc': rust, 'node': node,
+        'attempt': os.environ.get('GITHUB_RUN_ATTEMPT'),
+        'native_builder': json.loads((recipe.BUILD / 'evidence/native-builder.json').read_text()),
     }))
     (output / 'SHA256SUMS').write_text(''.join(f'{recipe.digest(path)}  {path.name}\n' for path in sorted(output.iterdir())))
     print(app_asset)

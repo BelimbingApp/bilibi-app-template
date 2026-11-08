@@ -47,7 +47,8 @@ npm ci --prefix apps/base/ui/assets --no-audit --no-fund
 ./scripts/build-assets.sh --check
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --target "$target" --locked -- -D warnings
-cargo build --workspace --release --target "$target" --locked
+cargo zigbuild --workspace --release --target "$target.$BILIBI_GLIBC" --locked
+python3 "$root/scripts/native_builder.py" --verify-binaries
 python3 "$root/scripts/recipe.py" verify
 app="$CARGO_TARGET_DIR/$target/release/bilibi-web"
 python3 "$root/scripts/recipe.py" status --binary "$app"

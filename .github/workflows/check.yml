@@ -19,23 +19,29 @@ jobs:
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
-    services:
-      postgres:
-        image: postgres:18.0-bookworm@sha256:3f55f8895c4ed50603e2fbdfc72fffeeaba3173321fee5cb825bbbeb30d9d854
-        env:
-          POSTGRES_HOST_AUTH_METHOD: trust
-          POSTGRES_DB: setup_check
-        ports: ['127.0.0.1:5432:5432']
-        options: >-
-          --health-cmd pg_isready --health-interval 5s
-          --health-timeout 5s --health-retries 12
     env:
-      BILIBI_CHECK_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/setup_check
+      BILIBI_CHECK_DATABASE_URL: postgresql://postgres@127.0.0.1:5439/setup_check
+      CARGO_BUILD_JOBS: '2'
+      TMPDIR: ${{ github.workspace }}/build/tmp
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
           fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.6.0'
+      - name: Install native prerequisites and start a disposable PostgreSQL 18
+        run: |
+          mkdir -p "$TMPDIR"
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y python3-venv postgresql-18
+          sudo install -d -o postgres -g postgres /var/lib/postgresql/setup-check
+          sudo -u postgres /usr/lib/postgresql/18/bin/initdb -D /var/lib/postgresql/setup-check --auth=trust
+          sudo -u postgres /usr/lib/postgresql/18/bin/pg_ctl -D /var/lib/postgresql/setup-check -l /var/lib/postgresql/setup-check/server.log -o '-h 127.0.0.1 -p 5439' -w start
+          createdb -h 127.0.0.1 -p 5439 -U postgres setup_check
       - name: Test publisher helpers
         run: python3 -m unittest discover -s tests
       # Preferred over the SOURCE_READ_TOKEN secret: a GitHub App installed only
@@ -65,15 +71,25 @@ jobs:
       - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
-            build/cargo/registry
-            build/cargo/git
+            ~/.cargo/registry
+            ~/.cargo/git
+            build/native-tools
+            build/zig-cache
+            build/zigbuild-cache
             build/target
-          key: linux-x86_64-${{ hashFiles('setup.toml', 'composition/*', 'rust-toolchain.toml', 'builder.toml', 'scripts/Builder.Dockerfile') }}
+          key: native-linux-x86_64-${{ hashFiles('setup.toml', 'composition/*', 'rust-toolchain.toml', 'builder.toml', 'scripts/native_builder.py') }}
+      - name: Prepare the pinned native builder
+        run: scripts/builder.sh --setup
       # Call the saved-record scripts directly; CI never chooses or saves versions.
       - name: Restore and check the whole setup
         run: |
           mkdir -p build/evidence
           /usr/bin/time -p scripts/builder.sh scripts/check.sh 2> >(tee build/evidence/check-time.txt >&2)
+      - name: Name the validation-only package commit
+        if: inputs.release_tag != '' && endsWith(inputs.release_tag, '-test')
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: git tag "$RELEASE_TAG" "$GITHUB_SHA"
       - name: Package checked bytes
         if: inputs.release_tag != ''
         env:
@@ -94,3 +110,9 @@ jobs:
           name: build-times
           path: build/evidence/*
           if-no-files-found: warn
+      - name: Stop the disposable PostgreSQL cluster
+        if: always()
+        run: |
+          if sudo test -f /var/lib/postgresql/setup-check/postmaster.pid; then
+            sudo -u postgres /usr/lib/postgresql/18/bin/pg_ctl -D /var/lib/postgresql/setup-check -m fast -w stop
+          fi

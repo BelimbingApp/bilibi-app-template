@@ -1,4 +1,4 @@
-"""Build records use real Git remotes; fixtures replace only Docker and compilation."""
+"""Build records use real Git remotes; fixtures replace only tool installation and compilation."""
 import json
 import os
 from pathlib import Path
@@ -64,7 +64,7 @@ class BuildRecordTest(WorkspaceFixture):
         super().setUp()
         self.env.pop('CI', None)
         self.env.pop('GITHUB_ACTIONS', None)
-        for name in ('builder.toml', 'rust-toolchain.toml', '.dockerignore'):
+        for name in ('builder.toml', 'rust-toolchain.toml'):
             (self.app / name).write_text('# fixture\n')
         for name in ('build.sh', 'check.sh'):
             (self.app / 'scripts' / name).write_text(BUILD)
@@ -164,6 +164,15 @@ class BuildRecordTest(WorkspaceFixture):
         self.command('build')
         self.assertEqual(self.record(), self.initial)
         self.assertEqual(self.built()['domains'][0]['commit'], self.domain_first)
+
+    def test_leftover_candidate_neither_blocks_nor_is_removed(self):
+        leftover = self.app / 'build-recipe'
+        leftover.mkdir()
+        (leftover / 'marker').write_text('other workspace')
+        self.command('build')
+        self.assertEqual(self.built()['domains'][0]['commit'], self.domain_first)
+        self.assertEqual((leftover / 'marker').read_text(), 'other workspace')
+        self.assertEqual(sorted(p.name for p in self.app.glob('build-recipe*')), ['build-recipe'])
 
     def test_dirty_sources_are_refused_even_with_yes(self):
         for folder, path, name in ((self.domain, 'notes', 'finance'), (self.platform, 'notes', 'Platform'),

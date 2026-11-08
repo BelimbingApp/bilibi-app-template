@@ -139,6 +139,7 @@ def setup():
     output_paths()
     os.environ['BILIBI_FRONT_DOOR'] = '1'
     run('bash', ROOT / 'scripts/dev-setup.sh', PLATFORM)
+    run('bash', ROOT / 'scripts/builder.sh', '--setup')
     print('Setup complete. Local sources and runtime data are preserved. Run ./bilibi start.')
 
 
@@ -480,7 +481,7 @@ def choose_versions(yes=False):
 def copy_build_files(candidate):
     for name in ('scripts', 'composition'):
         shutil.copytree(ROOT / name, candidate / name, ignore=shutil.ignore_patterns('__pycache__', 'node_modules'))
-    for name in ('setup.toml', 'builder.toml', 'rust-toolchain.toml', '.dockerignore'):
+    for name in ('setup.toml', 'builder.toml', 'rust-toolchain.toml'):
         shutil.copyfile(ROOT / name, candidate / name)
 
 
@@ -499,20 +500,19 @@ def build(command, yes=False):
         raise ValueError('CARGO_TARGET_DIR must be outside sources/; use build/target for outputs')
     selected, observed, before, accepted = choose_versions(yes)
     recipe.check_record()
-    local = ROOT / '.local'
-    local.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='saved-build-', dir=local) as temp:
+    BUILD.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=BUILD.name + '-recipe-', dir=BUILD.parent) as temp:
         candidate = Path(temp)
         copy_build_files(candidate)
         env = candidate_environment()
+        env['BILIBI_BUILD_DIR'] = str(BUILD)
+        env['CARGO_TARGET_DIR'] = str(target)
         if accepted:
             (candidate / 'setup.toml').write_text(serialize(selected))
             subprocess.run(['python3', str(candidate / 'scripts/recipe.py'), 'materialize'], env=env, check=True)
             subprocess.run(['bash', str(candidate / 'scripts/builder.sh'), 'python3', 'scripts/recipe.py', 'record-candidate'], env=env, check=True)
             recipe.check_record(candidate)
         # Reuse downloads and compiler output, but obtain source from the candidate record.
-        env['BILIBI_BUILD_DIR'] = str(BUILD)
-        env['CARGO_TARGET_DIR'] = str(target)
         subprocess.run(['python3', str(candidate / 'scripts/recipe.py'), 'materialize'], env=env, check=True)
         subprocess.run(['python3', str(candidate / 'scripts/recipe.py'), 'verify-remote'], env=env, check=True)
         subprocess.run(['bash', str(candidate / 'scripts/builder.sh'), script], env=env, check=True)
@@ -640,8 +640,8 @@ def main():
               '\n'
               'Before a release\n'
               '  check         Choose versions, then build and test against an empty test\n'
-              '                database. Needs Docker.\n'
-              '  build         Ask about new commits, save your choices, and build. Needs Docker.\n'
+              '                database.\n'
+              '  build         Ask about new commits, save your choices, and build.\n'
               '                For scripts, use build --yes or check --yes to accept new commits.\n'
               '  release --tag setup-vX.Y.Z\n'
               '                Commit the build record and start the release on GitHub.\n'

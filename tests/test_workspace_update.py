@@ -12,7 +12,7 @@ PLATFORM_URL = 'https://example.test/platform.git'
 DOMAIN_URL = 'https://example.test/finance.git'
 
 # A small Platform fixture with the same discovery/restore interface. No Cargo,
-# Docker, installation, network access or production source checkout is needed.
+# Tool installation, network access or production source checkout is needed.
 DISCOVERY = '''from pathlib import Path
 import shutil
 import sys

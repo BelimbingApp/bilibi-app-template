@@ -1,9 +1,11 @@
-format = 1
+format = 2
 runner = "ubuntu-24.04"
-rust_image = "rust:1.99.0-bookworm@sha256:114c7a4425406451c2866b6aafe69fe29b1b298832db1277d411ac73c82d04d6"
-node_image = "node:24.6.0-bookworm-slim@sha256:9b741b28148b0195d62fa456ed84dd6c953c1f17a3761f3e6e6797a754d9edff"
-postgres_image = "postgres:18.0-bookworm@sha256:3f55f8895c4ed50603e2fbdfc72fffeeaba3173321fee5cb825bbbeb30d9d854"
-debian_snapshot = "20261007T000000Z"
-rust = "1.99.0"
 node = "24.6.0"
+node_sha256 = "fda6f6a00759eea0a27e34fcdfdd09c2b0413855edaa7f746246cf81c0186e26"
+zig = "0.14.1"
+zig_sha256 = "6eb9d4d759b292c83810dbee2e9e8e3fbfbf01d864e6e9811bae711fd74e1c2f"
+cargo_zigbuild = "0.24.1"
+cargo_zigbuild_sha256 = "238a1ab54a95053a4eadc34775c81f795a8ad75f80bfed63f3f445f518102375"
 target = "x86_64-unknown-linux-gnu"
+glibc = "2.36"
+postgres = "18"
