@@ -13,6 +13,8 @@ import tarfile
 import tomllib
 import urllib.request
 
+from arch_prerequisites import prepare as prepare_arch
+
 ROOT = Path(__file__).resolve().parent.parent
 BUILD = Path(os.environ.get('BILIBI_BUILD_DIR', ROOT / 'build')).resolve()
 
@@ -29,6 +31,12 @@ def output(*args):
 def expect(name, actual, wanted):
     if actual != wanted:
         raise ValueError(f'{name} is {actual}; this recipe needs {wanted}. Install the pinned version and rerun ./bilibi setup.')
+
+
+def require_memory():
+    available = re.search(r'^MemAvailable:\s+(\d+)', Path('/proc/meminfo').read_text(), re.M)
+    if not available or int(available[1]) < 8 * 1024 * 1024:
+        raise ValueError('Build needs at least 8 GiB available memory. Free memory and rerun the command.')
 
 
 def binary_libraries(binary, baseline):
@@ -59,6 +67,14 @@ def verify_binaries(config):
 def prepare(config):
     if platform.system() != 'Linux' or platform.machine() != 'x86_64':
         raise ValueError('This build recipe needs Linux x86-64. On Windows, use WSL2.')
+    if shutil.which('node'):
+        expect('Node', output('node', '--version'), 'v' + config['node'])
+    # Reject explicitly installed mismatches before changing packages or tools.
+    for command, version in [('zig', config['zig']), ('cargo-zigbuild', config['cargo_zigbuild'])]:
+        if shutil.which(command):
+            actual = output(command, 'version' if command == 'zig' else '--version').split()[-1]
+            expect(command, actual, version)
+    prepare_arch(config['postgres'])
     for tool in ('rustup', 'git', 'curl', 'objdump', 'cc', 'psql'):
         if not shutil.which(tool):
             raise ValueError(f'Install {tool}, then rerun ./bilibi setup. See docs/guides/releasing.md.')
@@ -75,8 +91,6 @@ def prepare(config):
     tools = BUILD / 'native-tools'
     tools.mkdir(parents=True, exist_ok=True)
     node_home = tools / f'node-{config["node"]}'
-    if shutil.which('node'):
-        expect('Node', output('node', '--version'), 'v' + config['node'])
     # Use the checked archive even when PATH has matching Node: it pins npm too.
     if not (node_home / 'bin/node').exists():
         archive = tools / 'node.tar.xz'
@@ -93,11 +107,6 @@ def prepare(config):
         archive.unlink()
     os.environ['PATH'] = str(node_home / 'bin') + os.pathsep + os.environ['PATH']
     expect('Node', output('node', '--version'), 'v' + config['node'])
-    # Reject an incompatible explicitly installed tool instead of hiding it.
-    for command, version in [('zig', config['zig']), ('cargo-zigbuild', config['cargo_zigbuild'])]:
-        if shutil.which(command):
-            actual = output(command, 'version' if command == 'zig' else '--version').split()[-1]
-            expect(command, actual, version)
     venv = tools / 'python'
     if not shutil.which('zig') or not shutil.which('cargo-zigbuild'):
         if not (venv / 'bin/python').exists():
@@ -134,14 +143,13 @@ def main():
     evidence = BUILD / 'evidence'
     evidence.mkdir(parents=True, exist_ok=True)
     (evidence / 'native-builder.json').write_text(json.dumps(versions, indent=2) + '\n')
-    packages = output('dpkg-query', '-W') if shutil.which('dpkg-query') else 'No Debian package database on this host'
+    packages = (output('pacman', '-Q') if shutil.which('pacman') else
+                output('dpkg-query', '-W') if shutil.which('dpkg-query') else 'No supported package database on this host')
     (evidence / 'builder-packages.txt').write_text(packages + '\n')
     if sys.argv[1:] == ['--setup']:
         print('Native build tools match rust-toolchain.toml and builder.toml.')
         return
-    available = re.search(r'^MemAvailable:\s+(\d+)', Path('/proc/meminfo').read_text(), re.M)
-    if not available or int(available[1]) < 8 * 1024 * 1024:
-        raise ValueError('Build needs at least 8 GiB available memory. Free memory and rerun the command.')
+    require_memory()
     os.environ.update(CARGO_BUILD_JOBS='2', CARGO_INCREMENTAL='0', CARGO_PROFILE_RELEASE_STRIP='symbols',
                       BILIBI_GLIBC=config['glibc'], BILIBI_BUILD_DIR=str(BUILD),
                       CARGO_ZIGBUILD_CACHE_DIR=str(BUILD / 'zigbuild-cache'),

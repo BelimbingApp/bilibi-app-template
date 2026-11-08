@@ -17,6 +17,8 @@ import tempfile
 import tomllib
 import uuid
 
+import arch_prerequisites
+import native_builder
 import recipe
 import publish
 
@@ -137,6 +139,10 @@ def setup():
     recipe.materialize()
     hooks()
     output_paths()
+    if arch_prerequisites.is_arch():
+        # Keep the pinned tools in this process too: start inherits this PATH.
+        os.environ['PATH'] = str(Path.home() / '.cargo/bin') + os.pathsep + os.environ['PATH']
+        native_builder.prepare(native_builder.read(ROOT / 'builder.toml'))
     os.environ['BILIBI_FRONT_DOOR'] = '1'
     run('bash', ROOT / 'scripts/dev-setup.sh', PLATFORM)
     run('bash', ROOT / 'scripts/builder.sh', '--setup')

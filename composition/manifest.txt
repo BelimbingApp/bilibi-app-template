@@ -1,6 +1,6 @@
 # Written by scripts/discover-modules.py --pin; read by --restore and apps/web/build.rs.
-platform = "9c3fb25b681df93cf96e1114fbe90b47724f13e6"
-platform_version = "0.1.1"
-cargo_lock_sha256 = "9aa142151d1f5d5fc46f0c8130719e0a75fbe59d60cab6b059d9792c485beb6f"
+platform = "4cd923b32c64c8972c33ed01e35bb80e16488846"
+platform_version = "0.2.1"
+cargo_lock_sha256 = "279598816160bc545345ccc605933130016dda89810ffcd3bbb6124c1f90c555"
 
 [containers]

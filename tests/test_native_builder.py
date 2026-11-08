@@ -5,11 +5,13 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parent.parent / 'scripts/native_builder.py'
+sys.path.insert(0, str(SCRIPT.parent))
 spec = importlib.util.spec_from_file_location('native_builder', SCRIPT)
 builder = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(builder)
