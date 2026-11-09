@@ -4,6 +4,12 @@ The Bilibi app maker is the starting copy for your own application built on Bili
 
 **Status:** version 0.1, in active development.
 
+## What the app maker does
+
+The Platform has two layers of shared modules for the application you want to build. Base has no business logic: it is the plumbing, such as sign-in, permissions and audit, so every application includes it. Core holds the modules that deal with business records, such as companies, people and products. Because every business is unique, Core modules are on demand: you take only the Core modules that the Domains and Extensions in your application use. A Domain is one business area, such as Finance, whereas an Extension adds your own features. See [ADR 25](https://github.com/BelimbingProject/bilibi/blob/main/docs/architecture/decisions/25-core-modules-on-demand.md) for the reasoning.
+
+This is where the Bilibi app maker comes in. It takes the Platform and the Domains and Extensions you choose, links only the Core modules they use, and records the exact version of every part. It then builds your application into the smallest footprint possible, with no bloat. You get an application that serves exactly what you need, and you can release the same versions to your servers.
+
 ## When to use it
 
 Use Bilibi app maker to run your own Bilibi on your servers. For developing and contributing to Bilibi, use the [Platform repository](https://github.com/BelimbingProject/bilibi). 
