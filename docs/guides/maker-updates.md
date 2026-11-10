@@ -16,7 +16,7 @@ The old version stays available when another is selected. The parent bootstrap k
 
 ## One-time adoption
 
-New applications cloned from a maker with this bootstrap can run `./bilibi adopt` after connecting `origin` to their own repository. Review and commit `bilibi` and `maker.toml`, then push through the application's usual review process. Future daily work uses only `./bilibi update`.
+New applications cloned from a maker with this bootstrap can run `./bilibi adopt` after connecting `origin` to their own repository. Review and commit `bilibi`, `maker.toml` and `maker.lock`, then push through the application's usual review process. Future daily work uses only `./bilibi update`.
 
 For an older application with copied tooling, use a **clean checkout**, with no unresolved merge. Preserve any existing work and runtime data first. Point `upstream` at the official maker (add it if absent):
 
@@ -36,7 +36,7 @@ cp .git/bilibi-reviewed-bootstrap bilibi
 chmod +x bilibi
 ./bilibi adopt
 git diff -- bilibi maker.toml
-git add bilibi maker.toml
+git add bilibi maker.toml maker.lock
 git commit -m "Adopt versioned shared maker tooling"
 ```
 
@@ -44,7 +44,7 @@ These example `.git/` paths assume an ordinary clone. In a linked worktree, obta
 
 Adoption checks copied tracked `scripts/` against the shared official ancestor, or the selected maker commit for unrelated histories. Unmodified older copies are supported when the historical link exists. Customized scripts stop adoption with the exact path; nothing is overwritten. Port such changes deliberately to application configuration or propose them to the maker, then retry. Unrelated histories whose copies differ also need this manual review. An old entry point cannot acquire a new updater by itself: replacing it with the reviewed bootstrap is this one-time boundary. A checkout with existing merge conflicts must be reconciled manually before adopting; do not reset it to make adoption pass.
 
-`setup.toml`, `composition/`, `builder.toml`, `rust-toolchain.toml`, `.env`, the product README and application source remain application-owned. Adoption leaves copied scripts and workflows intact for inspection; `./bilibi` no longer executes those scripts. Direct script calls in an application's existing CI remain that application's responsibility; review those workflows separately before removing the frozen copies. The maker's own checkout without `maker.toml` keeps using local scripts for development. Do not merge maker `main` into an adopted application for routine tooling updates.
+`setup.toml`, `composition/`, `builder.toml`, `rust-toolchain.toml`, `.env`, the product README and application source remain application-owned. Adoption leaves copied scripts and workflows intact for inspection; `./bilibi` no longer executes those scripts. `maker.lock` records the exact maker commit and tooling SHA-256 an application last adopted or built with. `./bilibi build` and `./bilibi check` rewrite it when the selected maker differs; commit it with the build record. A successful build covers it, so `./bilibi release` tags the maker the build used. CI and release never advance it: `./bilibi tooling` verifies the recorded commit is on official `main`, installs that exact tooling and prints its directory; the maker's own checkout prints itself. The maker's `check.yml` and `release.yml` call scripts only through that directory. Copy those workflows into your application, replacing workflows that call copied `scripts/` directly, before removing the frozen copies. The maker's own checkout without `maker.toml` keeps using local scripts for development. Do not merge maker `main` into an adopted application for routine tooling updates.
 
 ## Failures and recovery
 

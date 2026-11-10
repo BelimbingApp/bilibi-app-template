@@ -22,6 +22,7 @@ On Arch and Omarchy, setup installs missing prerequisites with pacman and perfor
 my-bilibi/                         # application Git repository
 ├── bilibi                         # standalone stable bootstrap
 ├── maker.toml                     # shared tooling source, after adoption
+├── maker.lock                     # maker commit recorded by adopt/build, used by CI
 ├── setup.toml                     # URLs and exact component commits
 ├── composition/
 │   ├── manifest.txt               # saved component identity

@@ -63,7 +63,7 @@ git remote rename origin upstream
 git remote add origin https://github.com/your-company/my-bilibi.git
 gh repo set-default your-company/my-bilibi
 ./bilibi adopt
-git add bilibi maker.toml
+git add bilibi maker.toml maker.lock
 git commit -m "Adopt versioned shared maker tooling"
 git push -u origin main
 ```

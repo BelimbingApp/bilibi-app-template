@@ -13,6 +13,11 @@ import time
 import tomllib
 import unittest
 
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
 from test_workspace_update import ROOT, WorkspaceFixture
 
 OFFICIAL = 'https://github.com/BelimbingProject/bilibi-app-maker.git'
@@ -246,7 +251,45 @@ class MakerUpdateTest(WorkspaceFixture):
         self.assertEqual(built, tomllib.loads(before.decode()))
         self.assertEqual((self.app / 'setup.toml').read_bytes(), before)
         self.assertEqual((self.app / 'builder.toml').read_text(), '# Application-specific configuration\n')
+        # The build ran newer maker tooling than adoption recorded; only that record changes.
+        self.assertEqual(self.git(self.app, 'status', '--porcelain'), 'M maker.lock')
+        self.assertEqual(json.loads((self.app / 'maker.lock').read_text()), self.selected())
+        self.assertEqual(self.selected()['commit'], self.git(self.maker, 'rev-parse', 'HEAD'))
+
+    @unittest.skipUnless(yaml, 'PyYAML reads the workflow definition')
+    def test_ci_workflow_runs_recorded_tooling_without_copied_scripts(self):
+        recorded = json.loads((self.app / 'maker.lock').read_text())
+        self.assertEqual(recorded['commit'], self.first)
+        self.maker_update()
+        shutil.rmtree(self.app / 'scripts')
+        self.commit(self.app, 'Remove frozen copied tooling')
+        steps = {step.get('name'): step['run'] for step in
+                 yaml.safe_load((ROOT / '.github/workflows/check.yml').read_text())['jobs']['check']['steps'] if 'run' in step}
+
+        def ci(*names, ok=True):
+            github_env = self.root / 'github-env'
+            github_env.write_text('')
+            env = {**self.env, 'GITHUB_ENV': str(github_env)}
+            for name in names:
+                result = subprocess.run(['bash', '-e', '-c', steps[name]], cwd=self.app, env=env,
+                                        capture_output=True, text=True, timeout=60)
+                if result.returncode:
+                    self.assertFalse(ok, result.stdout + result.stderr)
+                    return result.stdout + result.stderr
+                env.update(line.split('=', 1) for line in github_env.read_text().splitlines())
+            self.assertTrue(ok)
+            return env
+
+        env = ci('Install the recorded maker tooling', 'Validate the saved recipe and lock')
+        # Oracle: the commit adoption recorded, not newer main or the application's copies.
+        self.assertEqual(Path(env['BILIBI_TOOLS']), self.state / self.first)
+        self.assertEqual(env['BILIBI_TOOL_APPLICATION_ROOT'], str(self.app))
+        self.assertEqual(self.selected()['commit'], self.first)
         self.assertEqual(self.git(self.app, 'status', '--porcelain'), '')
+        (self.app / 'maker.lock').write_text(json.dumps({**recorded, 'commit': '0' * 40}))
+        self.assertIn('not on official maker main', ci('Install the recorded maker tooling', ok=False))
+        (self.app / 'maker.lock').write_text(json.dumps({**recorded, 'sha256': '0' * 64}))
+        self.assertIn('digest mismatch', ci('Install the recorded maker tooling', ok=False))
 
     def test_long_running_start_does_not_hold_update_selection_lock(self):
         workspace = self.maker / 'scripts/workspace.py'

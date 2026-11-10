@@ -493,6 +493,8 @@ def copy_build_files(candidate):
                         ignore=shutil.ignore_patterns('__pycache__', 'node_modules'))
     for name in ('setup.toml', 'builder.toml', 'rust-toolchain.toml'):
         shutil.copyfile(ROOT / name, candidate / name)
+    if 'BILIBI_MAKER_SELECTION' in os.environ:
+        (candidate / 'maker.lock').write_text(os.environ['BILIBI_MAKER_SELECTION'])
 
 
 def candidate_environment():
@@ -528,6 +530,16 @@ def build(command, yes=False):
         subprocess.run(['bash', str(candidate / 'scripts/builder.sh'), script], env=env, check=True)
         if accepted:
             save_record(candidate, observed, before)
+        lock = candidate / 'maker.lock'
+        if lock.exists() and not ((ROOT / 'maker.lock').is_file() and (ROOT / 'maker.lock').read_bytes() == lock.read_bytes()):
+            with tempfile.NamedTemporaryFile(prefix='.bilibi-record-', dir=ROOT, delete=False) as stream:
+                pending = Path(stream.name)
+                stream.write(lock.read_bytes())
+            try:
+                pending.chmod(0o644)
+                pending.replace(ROOT / 'maker.lock')
+            finally:
+                pending.unlink(missing_ok=True)
         mark_successful_build(candidate)
 
 
@@ -550,7 +562,7 @@ def release(tag):
 
 def record_fingerprint(root):
     digest = hashlib.sha256()
-    for name in RECORD_FILES:
+    for name in RECORD_FILES + (('maker.lock',) if (root / 'maker.lock').exists() else ()):
         digest.update(name.encode() + b'\0' + (root / name).read_bytes() + b'\0')
     return digest.hexdigest()
 
