@@ -65,7 +65,7 @@ gh repo set-default your-company/my-bilibi
 git push -u origin main
 ```
 
-Your folder now has two remotes. `origin` is your application, where you push. `upstream` is the maker, so you can take its later improvements: see [Take maker updates](docs/guides/maker-updates.md#take-maker-updates).
+Your folder now has two remotes. `origin` is your application, where you push. `upstream` is the maker, so `./bilibi upgrade` can bring you its later improvements: see [Take maker updates](docs/guides/maker-updates.md#take-maker-updates).
 
 > [!WARNING]
 > Clone the maker as shown. A copy made any other way, such as a downloaded ZIP file, has none of the maker's history, and maker updates can then no longer merge.
@@ -87,7 +87,7 @@ To install it on a server, follow [Release your setup](docs/guides/releasing.md#
 - [Releasing your application](docs/guides/releasing.md): build, check and release your application.
 - [Installing a release](docs/guides/installing.md): put a tested release on Staging and Production.
 - [Private sources](docs/guides/private-sources.md): give checks access to private repositories.
-- [Taking maker updates](docs/guides/maker-updates.md): merge maker improvements and update older workspaces.
+- [Taking maker updates](docs/guides/maker-updates.md): merge maker improvements with `./bilibi upgrade`, and update older workspaces.
 - [Application repositories](docs/guides/about.md): where changes belong and what the maker provides.
 
 ## File length

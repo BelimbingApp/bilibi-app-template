@@ -1,6 +1,6 @@
 # Taking maker updates
 
-Merge improvements from the maker into your application on a branch you can review.
+Merge improvements from the maker into your application with one command and one pull request you can review.
 
 ## Take maker updates
 
@@ -20,7 +20,42 @@ gh repo set-default YOUR-ORGANISATION/YOUR-APPLICATION
 
 Without the second line, the GitHub CLI sends `gh pr create` and other commands to the maker, because it prefers a remote named `upstream`.
 
-To take the maker's changes, merge them on a branch and open a pull request:
+To take the maker's changes, run one command from your default branch, such as `main`:
+
+```sh
+./bilibi upgrade
+```
+
+It does four things:
+
+1. **Checks that it is safe to start.** Your checkout must have no uncommitted work and be level with `origin`, `upstream` must be exactly the maker URL above, and the GitHub CLI (`gh`) must be installed and signed in. Otherwise it stops, changes nothing, and prints what to fix.
+2. **Merges on a new branch.** It fetches the maker's `main`, creates a branch such as `maker-upgrade-1ab6321`, named after the maker commit, and merges the maker into it. Git keeps your own changes and brings in only what the maker changed since your last merge.
+3. **Opens one pull request.** It pushes the branch to `origin` and opens a pull request in your repository with the GitHub CLI. The description lists the maker commits and links to the same changes in the maker, so you can read every line before you accept it.
+4. **Returns you to your default branch**, unchanged.
+
+Nothing from the maker runs on your computer during the upgrade. The new scripts first run in your pull request's checks, and reach your team only after you merge.
+
+**Merge that pull request with a merge commit, not a squash.** A squash drops the link to the maker, and the next upgrade brings the same changes in again. After it merges, run `./bilibi update`.
+
+When there is nothing new, upgrade says "Already up to date with the maker" and changes nothing.
+
+### When the merge stops on a conflict
+
+A conflict happens only where the maker and you changed the same lines. Upgrade then stops on the new branch, before anything is pushed, and lists the conflicted files. To finish:
+
+1. Open each listed file and keep what you need from both sides. For `setup.toml` and the files in `composition/`, keep yours: they record your application's own versions. The message prints the command for this.
+2. Save the result with `git add --all`, then `git commit --no-edit`.
+3. Run `./bilibi upgrade` again. It sees the finished merge, pushes it and opens the pull request.
+
+To give up instead, run the three commands that the message prints: they undo the merge, return to your default branch and delete the new branch.
+
+### What upgrade does not do yet
+
+Upgrade keeps the maker's parts current. It does not yet move the Platform, Domains and Extensions in `setup.toml` to newer releases, or show the upgrade notes from those releases. That is the rest of [#15](https://github.com/BelimbingProject/bilibi-app-maker/issues/15). Until then, choose new versions with `./bilibi build`, as [Releasing your application](releasing.md) explains.
+
+### By hand
+
+Upgrade runs ordinary Git commands, and you can run them yourself:
 
 ```sh
 git switch -c maker-sync main
@@ -30,9 +65,9 @@ git push -u origin maker-sync
 gh pr create --fill
 ```
 
-Git keeps your own changes and brings in only what the maker changed since the last merge. It stops on a conflict only where both sides changed the same lines; fix those, then `git commit`. Use `git merge`, not `git pull` or a rebase, which would rewrite your history onto the maker's. **Merge that pull request with a merge commit, not a squash**: a squash drops the link to the maker, and the next merge brings the same changes in again.
+Use `git merge`, not `git pull` or a rebase, which would rewrite your history onto the maker's.
 
-**If your history is not linked to the maker yet**, `git merge upstream/main` refuses with "refusing to merge unrelated histories". First bring your files level with a maker commit by hand, keeping your own changes. Then record that commit as merged without changing any file, and merge that pull request with a merge commit too:
+**If your history is not linked to the maker yet**, upgrade stops and says so, and `git merge upstream/main` refuses with "refusing to merge unrelated histories". First bring your files level with a maker commit by hand, keeping your own changes. Then record that commit as merged without changing any file, and merge that pull request with a merge commit too:
 
 ```sh
 git merge --allow-unrelated-histories -s ours <maker-commit>
@@ -62,7 +97,7 @@ Create a separate application clone with the updated maker commands and your rev
 
 To adopt a clean existing clone manually, stop only that workspace's own processes by PID, verify the resolved source and destination paths, and move `build/platform` to an absent `sources/platform` on the same filesystem. Preserve its `.git`, nested component repositories, local files and runtime data together. Inspect an existing `target/` directory and deliberately move its outputs into `build/target` before setup creates its output link. Run status and setup, then validate with disposable data before changing editor or service paths. Roll back by restoring those recorded paths and the old application checkout; retain its database and keys.
 
-Maker updates are ordinary reviewed application changes; [Take maker updates](#take-maker-updates) shows how. After those changes reach your application's remote branch, `./bilibi update` pulls them into a clean workspace. It does not import changes directly from the maker repository.
+Maker updates are ordinary reviewed application changes; [Take maker updates](#take-maker-updates) shows how. After those changes reach your application's remote branch, `./bilibi update` pulls them into a clean workspace. Update does not import changes from the maker repository; `./bilibi upgrade` does, through a pull request.
 
 ## Where to go next
 
