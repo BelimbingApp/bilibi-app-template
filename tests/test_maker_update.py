@@ -155,6 +155,15 @@ class MakerUpdateTest(WorkspaceFixture):
                                  env=self.env, capture_output=True, text=True, timeout=30)
         self.assertNotEqual(refused.returncode, 0, refused.stdout + refused.stderr)
         self.assertNotIn('invalid choice', refused.stderr)
+        # Git exports GIT_DIR and GIT_INDEX_FILE to hooks in a linked worktree.
+        linked = self.root / 'linked-application'
+        self.git(self.app, 'worktree', 'add', '-b', 'linked', str(linked), 'HEAD')
+        (linked / 'notes').write_text('linked application work\n')
+        self.git(linked, 'add', 'notes')
+        accepted = subprocess.run(['git', '-C', str(linked), 'commit', '-m', 'Linked work'],
+                                  env=self.env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(accepted.returncode, 0, accepted.stdout + accepted.stderr)
+        self.assertEqual(self.git(self.app, 'remote', 'get-url', 'origin'), str(self.root / 'application.git'))
 
     def test_cache_tampering_never_executes_and_has_narrow_recovery(self):
         folder = self.state / self.first

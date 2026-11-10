@@ -20,8 +20,17 @@ OFFICIAL = 'https://github.com/BelimbingProject/bilibi-app-maker.git'
 CONFIG = ROOT / 'maker.toml'
 
 
+REPOSITORY_ENVIRONMENT = ('GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR',
+                          'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES')
+
+
+def cache_environment():
+    return {key: value for key, value in os.environ.items() if key not in REPOSITORY_ENVIRONMENT}
+
+
 def git(*args, cwd=ROOT):
-    return subprocess.check_output(['git', '-C', str(cwd), *args], text=True).strip()
+    env = None if cwd == ROOT else cache_environment()
+    return subprocess.check_output(['git', '-C', str(cwd), *args], text=True, env=env).strip()
 
 
 def atomic(path, data):
@@ -60,7 +69,7 @@ def payload(repository, commit):
         mode, kind, identity = metadata.split()
         if mode not in ('100644', '100755') or kind != 'blob' or '..' in Path(name).parts or Path(name).is_absolute():
             raise ValueError(f'Unsupported maker tooling file: {name}')
-        data = subprocess.check_output(['git', '-C', str(repository), 'cat-file', 'blob', identity])
+        data = subprocess.check_output(['git', '-C', str(repository), 'cat-file', 'blob', identity], env=cache_environment())
         files[name] = (data, int(mode, 8) & 0o777)
     if tomllib.loads(files.get('maker-tooling.toml', (b'', 0))[0].decode()) != {'format': 1}:
         raise ValueError(f'Maker {commit} does not support this bootstrap (tooling format 1 required). Previous selection retained; retry after a supported main commit is published.')
@@ -94,7 +103,7 @@ def select(state, refresh):
     if repository.is_symlink():
         raise ValueError(f'{repository}: symlinked object cache refused')
     if not repository.exists():
-        subprocess.run(['git', 'init', '--bare', '--quiet', str(repository)], check=True)
+        subprocess.run(['git', 'init', '--bare', '--quiet', str(repository)], check=True, env=cache_environment())
         git('remote', 'add', 'origin', OFFICIAL, cwd=repository)
     if git('remote', 'get-url', 'origin', cwd=repository) != OFFICIAL:
         raise ValueError(f'{repository}: trusted upstream mismatch; leave this cache intact for inspection and use a fresh clone.')
