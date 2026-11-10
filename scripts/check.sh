@@ -39,10 +39,11 @@ export DATABASE_URL=$BILIBI_CHECK_DATABASE_URL
 [[ $(psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atqc "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_toast%' AND c.relkind IN ('r','p','v','m','f')") == 0 ]] || {
     echo 'Check requires an empty disposable database; this database already contains tables or views.' >&2; exit 1;
 }
-export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-${BILIBI_BUILD_DIR:-$root/build}/target}
+app_root=${BILIBI_TOOL_APPLICATION_ROOT:-$root}
+export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-${BILIBI_BUILD_DIR:-$app_root/build}/target}
 target=x86_64-unknown-linux-gnu
 python3 "$root/scripts/recipe.py" restore
-cd "${BILIBI_SOURCE_DIR:-$root/sources}/platform"
+cd "${BILIBI_SOURCE_DIR:-$app_root/sources}/platform"
 npm ci --prefix apps/base/ui/assets --no-audit --no-fund
 ./scripts/build-assets.sh --check
 cargo fmt --all -- --check

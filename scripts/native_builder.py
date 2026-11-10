@@ -15,7 +15,7 @@ import urllib.request
 
 from arch_prerequisites import prepare as prepare_arch
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(os.environ.get('BILIBI_TOOL_APPLICATION_ROOT', Path(__file__).resolve().parent.parent)).resolve()
 BUILD = Path(os.environ.get('BILIBI_BUILD_DIR', ROOT / 'build')).resolve()
 
 

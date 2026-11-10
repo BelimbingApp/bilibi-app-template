@@ -78,7 +78,14 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24.6.0'
-      - run: npm ci --prefix scripts/github-tools --no-audit --no-fund --ignore-scripts
+      - name: Install the recorded maker tooling and its GitHub helpers
+        run: |
+          tools=$(./bilibi tooling)
+          echo "BILIBI_TOOLS=$tools" >> "$GITHUB_ENV"
+          echo "BILIBI_TOOL_APPLICATION_ROOT=$PWD" >> "$GITHUB_ENV"
+          echo "PYTHONDONTWRITEBYTECODE=1" >> "$GITHUB_ENV"
+          cp -R "$tools/scripts/github-tools" "$RUNNER_TEMP/github-tools"
+          npm ci --prefix "$RUNNER_TEMP/github-tools" --no-audit --no-fund --ignore-scripts
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: setup-release
@@ -88,8 +95,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          export PATH="$PWD/scripts/github-tools/node_modules/.bin:$PATH"
-          python3 scripts/publish.py draft --tag "$RELEASE_TAG" --repository "$GITHUB_REPOSITORY"
+          export PATH="$RUNNER_TEMP/github-tools/node_modules/.bin:$PATH"
+          python3 "$BILIBI_TOOLS/scripts/publish.py" draft --tag "$RELEASE_TAG" --repository "$GITHUB_REPOSITORY"
       # Publishing is an owner action: publish.py publish verifies the repository
       # immutability setting, which requires Administration:read. The build and
       # draft jobs deliberately have no administration credential.

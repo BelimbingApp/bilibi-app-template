@@ -1,12 +1,419 @@
-#!/usr/bin/env bash
-# The same entry point in Platform and application repositories.
-set -euo pipefail
-root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
-if ! command -v python3 >/dev/null || ! python3 -c 'import tomllib' 2>/dev/null; then
-    echo 'Bilibi needs Python 3.11 or newer. Use Arch Linux, Omarchy, Ubuntu 24.04 or Debian 12 (including WSL2), or install a newer python3.' >&2
-    exit 1
-fi
-# Setup can install Cargo during this invocation; the launch handoff also sources this.
-# shellcheck source=/dev/null
-if [[ -f $HOME/.cargo/env ]]; then source "$HOME/.cargo/env"; fi
-exec python3 "$root/scripts/workspace.py" "$@"
+#!/usr/bin/env python3
+"""Stable Bilibi bootstrap. Application configuration stays beside this file.
+
+maker.lock is the one record of the maker commit an application uses. Every
+command runs that commit's tooling, on a developer's machine and in CI alike.
+Only ./bilibi update moves the record, and the move reaches the team the same
+way as any other change: through an application pull request whose maker.lock
+diff lists the maker commits it brings in or removes.
+"""
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+
+try:
+    import tomllib
+except ImportError:
+    sys.exit('Bilibi needs Python 3.11 or newer.')
+
+ROOT = Path(__file__).resolve().parent
+OFFICIAL = 'https://github.com/BelimbingProject/bilibi-app-maker.git'
+COMPARE = 'https://github.com/BelimbingProject/bilibi-app-maker/compare/'
+CONFIG = ROOT / 'maker.toml'
+LOCK = ROOT / 'maker.lock'
+UPDATE_USAGE = 'Use ./bilibi update, ./bilibi update --to <maker commit> or ./bilibi update --back.'
+
+
+REPOSITORY_ENVIRONMENT = ('GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR',
+                          'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES')
+
+
+def cache_environment():
+    return {key: value for key, value in os.environ.items() if key not in REPOSITORY_ENVIRONMENT}
+
+
+def git(*args, cwd=ROOT):
+    env = None if cwd == ROOT else cache_environment()
+    return subprocess.check_output(['git', '-C', str(cwd), *args], text=True, env=env).strip()
+
+
+def succeeds(*args, cwd):
+    return subprocess.run(['git', '-C', str(cwd), *args], env=cache_environment(),
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+
+def atomic(path, data):
+    # Application files: readable by everyone like any other tracked file.
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
+        pending = Path(stream.name)
+        stream.write(data)
+    try:
+        pending.chmod(0o644)
+        pending.replace(path)
+    finally:
+        pending.unlink(missing_ok=True)
+
+
+def trusted():
+    if CONFIG.is_symlink():
+        raise ValueError('maker.toml must be an ordinary application-owned file')
+    if CONFIG.exists():
+        with CONFIG.open('rb') as stream:
+            config = tomllib.load(stream)
+        if config != {'format': 1, 'repository': OFFICIAL, 'stream': 'main'}:
+            raise ValueError('maker.toml: supported maker is official BelimbingProject main, format 1; inspect and correct the configuration.')
+    remotes = git('remote').splitlines()
+    if 'upstream' in remotes and git('remote', 'get-url', 'upstream').removesuffix('.git') != OFFICIAL.removesuffix('.git'):
+        raise ValueError(f'Maker upstream mismatch; inspect git remote -v and deliberately correct upstream to {OFFICIAL}. No tooling executed.')
+
+
+def payload(repository, commit):
+    """Read only regular tracked tooling files from the maker commit's Git objects."""
+    files = {}
+    listing = git('ls-tree', '-rz', '--full-tree', commit, cwd=repository)
+    for entry in listing.split('\0'):
+        if not entry:
+            continue
+        metadata, name = entry.split('\t', 1)
+        if not (name.startswith('scripts/') or name in ('builder.toml', 'rust-toolchain.toml', 'maker-tooling.toml', 'LICENSE')):
+            continue
+        mode, kind, identity = metadata.split()
+        if mode not in ('100644', '100755') or kind != 'blob' or '..' in Path(name).parts or Path(name).is_absolute():
+            raise ValueError(f'Unsupported maker tooling file: {name}')
+        data = subprocess.check_output(['git', '-C', str(repository), 'cat-file', 'blob', identity], env=cache_environment())
+        files[name] = (data, int(mode, 8) & 0o777)
+    if tomllib.loads(files.get('maker-tooling.toml', (b'', 0))[0].decode()) != {'format': 1}:
+        raise ValueError(f'Maker {commit} does not support this bootstrap (tooling format 1 required); maker.lock left unchanged.')
+    if 'scripts/workspace.py' not in files:
+        raise ValueError('Maker tooling has no workspace command')
+    return files
+
+
+def digest(files):
+    """SHA-256 over the tooling files' names, modes and bytes.
+
+    It is a fingerprint, not a signature: it proves that an installed copy has
+    not changed since it was installed from that maker commit, and lets CI check
+    that maker.lock names the same files. It says nothing about who wrote them.
+    Trust comes from maker main accepting changes only through reviewed pull
+    requests, and from the application reviewing each maker.lock change."""
+    value = hashlib.sha256()
+    for name, (data, mode) in sorted(files.items()):
+        value.update(name.encode() + b'\0' + str(mode).encode() + b'\0' + data + b'\0')
+    return value.hexdigest()
+
+
+def installed_digest(folder):
+    """digest() of an installed copy, or None when it holds a link or special file."""
+    if folder.is_symlink() or not folder.is_dir():
+        return None
+    files = {}
+    for path in folder.rglob('*'):
+        if path.is_symlink() or not (path.is_dir() or path.is_file()):
+            return None
+        if path.is_file():
+            files[str(path.relative_to(folder))] = (path.read_bytes(), path.stat().st_mode & 0o777)
+    return digest(files)
+
+
+def parse_record(text, where='maker.lock'):
+    try:
+        record = json.loads(text)
+    except ValueError as error:
+        raise ValueError(f'{where} is not valid JSON ({error}); restore it with git restore maker.lock.') from error
+    if not isinstance(record, dict) or record.get('repository') != OFFICIAL or record.get('stream') != 'main':
+        raise ValueError(f'{where}: recorded maker must be official BelimbingProject main; inspect and correct it deliberately.')
+    if not re.fullmatch('[0-9a-f]{40}', str(record.get('commit'))) or not re.fullmatch('[0-9a-f]{64}', str(record.get('sha256'))):
+        raise ValueError(f'{where}: needs a full maker commit and tooling sha256; restore it with git restore maker.lock.')
+    return record
+
+
+def recorded():
+    if LOCK.is_symlink() or not LOCK.is_file():
+        raise ValueError('maker.lock is missing; restore it with git restore maker.lock. It records the maker this application uses.')
+    return parse_record(LOCK.read_text())
+
+
+def committed():
+    """The maker.lock at HEAD: what the team and CI use until a new one is merged."""
+    result = subprocess.run(['git', '-C', str(ROOT), 'show', 'HEAD:maker.lock'], capture_output=True)
+    if result.returncode:
+        raise ValueError('maker.lock is not committed yet; commit the adoption (bilibi, maker.toml and maker.lock) first, then rerun ./bilibi update.')
+    return result.stdout, parse_record(result.stdout.decode(), 'maker.lock at HEAD')
+
+
+def record(commit, checksum, changes=None):
+    selection = {'repository': OFFICIAL, 'stream': 'main', 'commit': commit, 'sha256': checksum}
+    if changes:
+        selection['changes'] = changes
+    return (json.dumps(selection, indent=2) + '\n').encode()
+
+
+def cache(state):
+    """The maker object cache; fetch_main() fills it."""
+    repository = state / 'objects.git'
+    if repository.is_symlink():
+        raise ValueError(f'{repository}: symlinked object cache refused')
+    if not repository.exists():
+        subprocess.run(['git', 'init', '--bare', '--quiet', str(repository)], check=True, env=cache_environment())
+        git('remote', 'add', 'origin', OFFICIAL, cwd=repository)
+    if git('remote', 'get-url', 'origin', cwd=repository) != OFFICIAL:
+        raise ValueError(f'{repository}: trusted upstream mismatch; leave this cache intact for inspection and use a fresh clone.')
+    return repository
+
+
+def fetch_main(repository):
+    """Download official main into the cache and check the downloaded objects.
+
+    This is the only place maker code is downloaded. Fetching main does not
+    select it: commands still run the commit maker.lock records."""
+    try:
+        git('-c', 'core.hooksPath=/dev/null', 'fetch', '--quiet', '--no-tags', 'origin', '+refs/heads/main:refs/heads/main', cwd=repository)
+        main = git('rev-parse', 'refs/heads/main^{commit}', cwd=repository)
+    except subprocess.CalledProcessError as error:
+        raise ValueError('Cannot obtain official maker main; maker.lock left unchanged. Check GitHub connectivity/access, then retry.') from error
+    git('fsck', '--no-reflogs', '--no-dangling', main, cwd=repository)
+    return main
+
+
+def install(state, repository, commit, expected=None):
+    """Install a maker commit's tooling into its own folder; return (folder, sha256)."""
+    if not succeeds('merge-base', '--is-ancestor', commit, 'refs/heads/main', cwd=repository):
+        raise ValueError(f'Maker commit {commit} is not on official maker main; only commits merged into main can run.')
+    files = payload(repository, commit)
+    checksum = digest(files)
+    if expected and expected != checksum:
+        raise ValueError(f'maker.lock: sha256 does not match the tooling of maker commit {commit}; no tooling executed. Inspect maker.lock in application history.')
+    folder = state / commit
+    if folder.exists() or folder.is_symlink():
+        if installed_digest(folder) != checksum:
+            raise damaged(folder)
+        return folder, checksum
+    with tempfile.TemporaryDirectory(prefix='install-', dir=state) as temp:
+        pending = Path(temp) / 'tooling'
+        pending.mkdir()
+        for name, (data, mode) in files.items():
+            path = pending / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+            path.chmod(mode)
+        if installed_digest(pending) != checksum:
+            raise ValueError('Incomplete maker installation; maker.lock left unchanged')
+        pending.rename(folder)
+    return folder, checksum
+
+
+def damaged(folder):
+    return ValueError(f'{folder}: installed tooling changed after download; no tooling executed. Move only this folder aside for inspection, then rerun the command to install it again.')
+
+
+def locked_tooling(state, lock, offline=False):
+    """The installed tooling for maker.lock, installing it first if needed.
+
+    The usual case reads no Git objects: an installed folder whose files still
+    hash to the sha256 in maker.lock runs as is. offline never downloads; it
+    returns None when the tooling is not installed yet."""
+    folder = state / lock['commit']
+    if folder.exists() or folder.is_symlink():
+        if installed_digest(folder) == lock['sha256']:
+            return folder
+        if offline:
+            return None
+        raise ValueError(f'{folder}: does not match the sha256 in maker.lock; no tooling executed. If you edited maker.lock, restore it with git restore maker.lock; otherwise move only this folder aside for inspection and rerun the command.')
+    if offline:
+        return None
+    repository = cache(state)
+    if not succeeds('cat-file', '-e', lock['commit'] + '^{commit}', cwd=repository):
+        fetch_main(repository)
+    if not succeeds('cat-file', '-e', lock['commit'] + '^{commit}', cwd=repository):
+        raise ValueError(f'maker.lock: maker commit {lock["commit"]} is not on official maker main; restore maker.lock from your application history.')
+    return install(state, repository, lock['commit'], lock['sha256'])[0]
+
+
+def commits(repository, start, end):
+    """One line per commit reachable from end but not start."""
+    return git('log', '--format=%h %s', '--no-decorate', f'{start}..{end}', cwd=repository).splitlines()
+
+
+def changes(repository, start, end):
+    """What moving maker.lock from start to end changes, for the lock's diff."""
+    summary = {'from': start, 'compare': f'{COMPARE}{start}...{end}'}
+    if not succeeds('merge-base', '--is-ancestor', start, 'refs/heads/main', cwd=repository):
+        # A hand-edited or foreign record: say so instead of guessing a list.
+        return {**summary, 'adds': [], 'removes': [], 'note': f'{start} is not on official maker main'}
+    return {**summary, 'adds': commits(repository, start, end), 'removes': commits(repository, end, start)}
+
+
+def describe(summary, start, end):
+    lines = [f'Maker {start[:12]} -> {end[:12]}']
+    for title, key in (('Brings in', 'adds'), ('Removes', 'removes')):
+        if summary[key]:
+            lines.append(f'{title} {len(summary[key])} maker commit(s):')
+            lines.extend('  ' + line for line in summary[key])
+    if 'note' in summary:
+        lines.append(f'Commit list unavailable: {summary["note"]}.')
+    lines.append(f'Compare: {summary["compare"]}')
+    return '\n'.join(lines)
+
+
+def previous(current):
+    """The most recent maker commit in this application's history other than current."""
+    for revision in git('log', '--format=%H', '--', 'maker.lock').splitlines():
+        shown = subprocess.run(['git', '-C', str(ROOT), 'show', f'{revision}:maker.lock'], capture_output=True)
+        if shown.returncode:
+            continue
+        try:
+            commit = parse_record(shown.stdout.decode())['commit']
+        except ValueError:
+            continue
+        if commit != current:
+            return commit
+    raise ValueError('maker.lock has no earlier maker commit in this application\'s history; choose one with ./bilibi update --to <maker commit>.')
+
+
+def update(state, args):
+    """Move maker.lock to official main (or --to/--back), then update the application."""
+    if args not in ([], ['--back']) and not (len(args) == 2 and args[0] == '--to'):
+        raise ValueError(UPDATE_USAGE)
+    head_bytes, head_lock = committed()
+    pending = LOCK.is_symlink() or not LOCK.is_file() or LOCK.read_bytes() != head_bytes
+    current = head_lock
+    if pending:
+        try:
+            current = recorded()
+        except ValueError as error:
+            raise ValueError(f'maker.lock has local edits that are not a maker update ({error}); inspect git diff -- maker.lock.') from error
+    repository = cache(state)
+    main = fetch_main(repository)
+    if args == ['--back']:
+        target = head_lock['commit'] if current['commit'] != head_lock['commit'] else previous(head_lock['commit'])
+    elif args:
+        if not re.fullmatch('[0-9a-f]{7,40}', args[1]):
+            raise ValueError('--to needs a maker commit ID (7 to 40 lowercase hex characters). ' + UPDATE_USAGE)
+        found = subprocess.run(['git', '-C', str(repository), 'rev-parse', '--verify', '--quiet', args[1] + '^{commit}'],
+                               env=cache_environment(), capture_output=True, text=True)
+        target = found.stdout.strip()
+        if found.returncode or not target.startswith(args[1]):
+            raise ValueError(f'Maker commit {args[1]} is not on official maker main.')
+    else:
+        target = main
+    if target == head_lock['commit']:
+        print(f'Maker: maker.lock at HEAD records {target}; official main is {main}.', flush=True)
+    else:
+        # Show what changes before any of it runs.
+        print(describe(changes(repository, head_lock['commit'], target), head_lock['commit'], target), flush=True)
+    folder, checksum = install(state, repository, target)
+    print(f'Installed maker commit {target}; tooling sha256 {checksum}', flush=True)
+    if pending:
+        # The uncommitted record is regenerated below; the application update needs a clean checkout.
+        atomic(LOCK, head_bytes)
+    result = run(folder, ['update'])
+    head_bytes, head_lock = committed()
+    if target == head_lock['commit']:
+        if LOCK.is_symlink() or not LOCK.is_file() or LOCK.read_bytes() != head_bytes:
+            atomic(LOCK, head_bytes)
+        print(f'maker.lock records maker commit {target}.', flush=True)
+    else:
+        summary = changes(repository, head_lock['commit'], target)
+        atomic(LOCK, record(target, checksum, summary))
+        print(f'maker.lock now records maker commit {target} ({len(summary["adds"])} in, {len(summary["removes"])} out). '
+              'Commit it and open an application pull request: its diff lists the maker commits and the compare link. '
+              f'Until it merges, CI keeps running maker {head_lock["commit"]}.', flush=True)
+    print(f'Application commit {git("rev-parse", "HEAD")}; maker commit {target}', flush=True)
+    if result.returncode:
+        print('Application update failed; maker.lock above is kept. Local work/data retained. '
+              'Resolve the reported application problem and rerun the same command.', file=sys.stderr)
+    return result.returncode
+
+
+def adopt(state):
+    if CONFIG.exists():
+        raise ValueError('Already adopted; use ./bilibi update.')
+    # Only the deliberately replaced bootstrap may be dirty at this boundary.
+    changed = git('status', '--porcelain=v1', '--untracked-files=all', '-z')
+    if any(entry[3:] != 'bilibi' for entry in changed.split('\0') if entry):
+        raise ValueError('Adoption requires a clean application except for the reviewed bilibi bootstrap. Commit or stash local work yourself, then retry ./bilibi adopt.')
+    repository = cache(state)
+    commit = fetch_main(repository)
+    _, checksum = install(state, repository, commit)
+    # Find the historical official copy so older unmodified scripts can migrate.
+    # The fetched objects are separate; import them without changing any app ref.
+    git('-c', 'core.hooksPath=/dev/null', 'fetch', '--quiet', '--no-tags', str(repository), commit)
+    base = subprocess.run(['git', '-C', str(ROOT), 'merge-base', 'HEAD', commit],
+                          text=True, capture_output=True).stdout.strip() or commit
+    customized = git('diff', '--name-only', '--no-ext-diff', '--no-renames', base, 'HEAD', '--', 'scripts').splitlines()
+    if customized:
+        raise ValueError(f'{customized[0]}: customized copied tooling; adoption stopped. Port this customization deliberately to application configuration or upstream maker before adoption; no application files changed.')
+    atomic(CONFIG, f'format = 1\nrepository = "{OFFICIAL}"\nstream = "main"\n'.encode())
+    atomic(LOCK, record(commit, checksum))
+    print(f'Maker commit {commit}; tooling sha256 {checksum}')
+    print('Adopted shared maker tooling. Review and commit bilibi, maker.toml and maker.lock, then push through your usual review. Copied scripts remain intact but are no longer used by ./bilibi.')
+
+
+def run(folder, command):
+    env = {**os.environ, 'BILIBI_TOOL_APPLICATION_ROOT': str(ROOT), 'PYTHONDONTWRITEBYTECODE': '1'}
+    return subprocess.run([sys.executable, str(folder / 'scripts/workspace.py'), *command], cwd=ROOT, env=env)
+
+
+def main():
+    command = sys.argv[1:]
+    if (Path.home() / '.cargo/env').is_file():
+        os.environ['PATH'] = str(Path.home() / '.cargo/bin') + os.pathsep + os.environ.get('PATH', '')
+    if not CONFIG.exists() and not CONFIG.is_symlink() and command == ['tooling']:
+        print(ROOT)
+        return
+    if not CONFIG.exists() and not CONFIG.is_symlink() and command != ['adopt']:
+        # Maker development / a legacy workspace, until explicit adoption.
+        os.execv(sys.executable, [sys.executable, str(ROOT / 'scripts/workspace.py'), *command])
+    hook = command == ['check-staged']
+    try:
+        trusted()
+        location = Path(git('rev-parse', '--git-path', 'bilibi-maker'))
+        state = location if location.is_absolute() else ROOT / location
+        if state.is_symlink():
+            raise ValueError(f'{state}: symlinked maker state refused')
+        state.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with (state / 'lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if command == ['adopt']:
+                adopt(state)
+                return
+            if command[:1] == ['update']:
+                # update holds the lock throughout, so no other command sees a half-moved record.
+                sys.exit(update(state, command[1:]))
+            selection = recorded()
+            # A Git hook never downloads or installs maker code: it uses the
+            # locked commit's installed tooling, or does nothing.
+            folder = locked_tooling(state, selection, offline=hook)
+            if folder is None:
+                print('Bilibi commit check skipped: the maker tooling in maker.lock is not installed in this checkout. '
+                      'Run ./bilibi setup to install it; CI still checks the record.', file=sys.stderr)
+                return
+            if command == ['tooling']:
+                print(folder)
+                return
+            if not hook:
+                print(f'Maker commit {selection["commit"]} (maker.lock)', file=sys.stderr, flush=True)
+            # A long running start must allow updates in another terminal. Old
+            # version folders stay intact for commands already using them.
+            fcntl.flock(lock, fcntl.LOCK_UN)
+            sys.exit(run(folder, command).returncode)
+    except (ValueError, KeyError, OSError, subprocess.CalledProcessError) as error:
+        if hook:
+            print(f'Bilibi commit check skipped: {error}', file=sys.stderr)
+            return
+        print(f'Application remains at commit {git("rev-parse", "HEAD")}; maker.lock is unchanged unless reported above.', file=sys.stderr)
+        raise
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (ValueError, KeyError, OSError, subprocess.CalledProcessError) as error:
+        sys.exit(str(error))

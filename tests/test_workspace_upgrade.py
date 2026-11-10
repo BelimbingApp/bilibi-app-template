@@ -152,6 +152,13 @@ class UpgradeTest(unittest.TestCase):
         self.git(self.app, 'push')
         self.assertIn('checkout --ours -- setup.toml', self.command('upgrade', ok=False))
 
+    def test_adopted_application_is_sent_to_update(self):
+        self.maker_change()
+        (self.app / 'maker.lock').write_text('maker = "0"\n')
+        self.commit(self.app, 'Adopt')
+        self.git(self.app, 'push')
+        self.refused('./bilibi update', 'adopted shared maker tooling')
+
     def test_dirty_checkout_is_refused_before_anything_is_fetched(self):
         self.maker_change()
         for name, text in (('product', 'valuable edit\n'), ('untracked', 'keep this\n')):

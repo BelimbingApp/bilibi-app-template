@@ -2,8 +2,9 @@
 # Compile the saved composition without resolving a new dependency set.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd -P)
-export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-${BILIBI_BUILD_DIR:-$root/build}/target}
-platform=${BILIBI_SOURCE_DIR:-$root/sources}/platform
+app_root=${BILIBI_TOOL_APPLICATION_ROOT:-$root}
+export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-${BILIBI_BUILD_DIR:-$app_root/build}/target}
+platform=${BILIBI_SOURCE_DIR:-$app_root/sources}/platform
 target=x86_64-unknown-linux-gnu
 python3 "$root/scripts/recipe.py" restore
 cd "$platform"

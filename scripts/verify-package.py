@@ -9,14 +9,15 @@ import recipe
 
 from publish import verify_files
 
-root = Path(__file__).resolve().parent.parent
+tools = Path(__file__).resolve().parent.parent
+root = recipe.ROOT
 before = verify_files(root / 'dist')
 # Keep proof under build/, never in the install archive or Git index.
 with tempfile.TemporaryDirectory(prefix='package-proof-', dir=recipe.BUILD) as temp:
     saved = Path(temp) / 'dist'
     (root / 'dist').rename(saved)
     try:
-        subprocess.run([sys.executable, str(root / 'scripts/package.py'), *sys.argv[1:]], check=True)
+        subprocess.run([sys.executable, str(tools / 'scripts/package.py'), *sys.argv[1:]], check=True)
         after = verify_files(root / 'dist')
         if before != after:
             raise ValueError('Packaging the same checked bytes produced different asset digests')

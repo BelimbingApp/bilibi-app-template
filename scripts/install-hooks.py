@@ -27,8 +27,20 @@ def legacy_guard(current, command):
     return exact == current
 
 
-def install(root, command):
-    """command is an interpreter, a script path relative to root, then arguments."""
+def guard(command):
+    return ('#!/usr/bin/env bash\n' + MARKER + '\nset -euo pipefail\n'
+            + 'root=$(git rev-parse --show-toplevel)\n'
+            + 'cd -- "$root"\n'
+            + 'previous=$(dirname -- "${BASH_SOURCE[0]}")/pre-commit.before-bilibi\n'
+            + 'if [[ -x $previous ]]; then "$previous" "$@"; fi\n'
+            + 'exec ' + ' '.join([shlex.quote(command[0]), '"$root"/' + shlex.quote(command[1]),
+                                  *map(shlex.quote, command[2:])]) + '\n')
+
+
+def install(root, command, replaces=()):
+    """command is an interpreter, a script path relative to root, then arguments.
+
+    replaces lists earlier commands whose unmodified generated guards may be upgraded."""
     root = root.resolve()
     def git(*args):
         return subprocess.check_output(['git', '-C', str(root), *args], text=True).strip()
@@ -45,13 +57,7 @@ def install(root, command):
     previous = hooks / 'pre-commit.before-bilibi'
     if hook.is_symlink():
         raise ValueError(f'{hook}: symlink hook left unchanged; integrate the Bilibi guard in a repository-local hook (docs/guides/running.md#commit-safeguards)')
-    text = ('#!/usr/bin/env bash\n' + MARKER + '\nset -euo pipefail\n'
-            + 'root=$(git rev-parse --show-toplevel)\n'
-            + 'cd -- "$root"\n'
-            + 'previous=$(dirname -- "${BASH_SOURCE[0]}")/pre-commit.before-bilibi\n'
-            + 'if [[ -x $previous ]]; then "$previous" "$@"; fi\n'
-            + 'exec ' + ' '.join([shlex.quote(command[0]), '"$root"/' + shlex.quote(command[1]),
-                                  *map(shlex.quote, command[2:])]) + '\n')
+    text = guard(command)
     if hook.exists():
         current = hook.read_text()
         if current == text:
@@ -63,7 +69,7 @@ def install(root, command):
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if tracked.returncode == 0:
                 raise ValueError(f'{hook}: tracked hook left unchanged. Use an untracked repository-local hooks directory and copy your custom hook there before ./bilibi setup (docs/guides/running.md#commit-safeguards).')
-        legacy = legacy_guard(current, command)
+        legacy = any(legacy_guard(current, earlier) or current == guard(earlier) for earlier in (command, *replaces))
         if not legacy and 'Bilibi repository guard' in current:
             raise ValueError(f'{hook}: installed guard has local edits; left unchanged. Reconcile them with pre-commit.before-bilibi before rerunning ./bilibi setup.')
         if not legacy:

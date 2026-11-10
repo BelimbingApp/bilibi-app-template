@@ -48,7 +48,7 @@ After the checks pass, start a release with a new application version:
 ./bilibi release --tag setup-v1.0.0
 ```
 
-After the build succeeds, commit `setup.toml`, `composition/manifest.txt` and `composition/Cargo.lock`, review that commit, and merge it into the application's default branch. `./bilibi release` refuses any uncommitted file, a commit outside the remote default branch, or a record that differs from the last successful build or check. It tags that reviewed record and pushes the tag to `origin`, starting **Release setup**. Release never selects or commits source versions.
+After the build succeeds, commit `setup.toml`, `composition/manifest.txt` and `composition/Cargo.lock` (an adopted application also has `maker.lock` committed, which the build covers but never changes), review that commit, and merge it into the application's default branch. `./bilibi release` refuses any uncommitted file, a commit outside the remote default branch, or a record that differs from the last successful build or check. It tags that reviewed record and pushes the tag to `origin`, starting **Release setup**. Release never selects or commits source versions.
 
 The setup version belongs to your repository. It is separate from the Platform and Domain versions. **Never move a published tag or replace a published asset.**
 

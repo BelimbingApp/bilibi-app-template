@@ -23,6 +23,7 @@ import recipe
 import publish
 
 ROOT, PLATFORM, BUILD = recipe.ROOT, recipe.PLATFORM, recipe.BUILD
+TOOLS = Path(__file__).resolve().parent.parent
 RECORD_FILES = ('setup.toml', 'composition/manifest.txt', 'composition/Cargo.lock')
 OFFICIAL = re.compile(r'https://github\.com/BelimbingProject/[A-Za-z0-9][A-Za-z0-9_.-]*(?:\.git)?')
 MAKER = 'https://github.com/BelimbingProject/bilibi-app-maker.git'
@@ -101,11 +102,12 @@ def status():
 
 
 def hooks():
-    spec = importlib.util.spec_from_file_location('hooks', ROOT / 'scripts/install-hooks.py')
+    spec = importlib.util.spec_from_file_location('hooks', TOOLS / 'scripts/install-hooks.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     module.install(PLATFORM, ['python3', 'scripts/discover-modules.py', '--check'])
-    module.install(ROOT, ['python3', 'scripts/workspace.py', 'check-staged'])
+    module.install(ROOT, ['python3', 'bilibi', 'check-staged'],
+                   replaces=[['python3', 'scripts/workspace.py', 'check-staged']])
 
 
 def output_paths():
@@ -148,8 +150,8 @@ def setup():
         os.environ['PATH'] = str(Path.home() / '.cargo/bin') + os.pathsep + os.environ['PATH']
         native_builder.prepare(native_builder.read(ROOT / 'builder.toml'))
     os.environ['BILIBI_FRONT_DOOR'] = '1'
-    run('bash', ROOT / 'scripts/dev-setup.sh', PLATFORM)
-    run('bash', ROOT / 'scripts/builder.sh', '--setup')
+    run('bash', TOOLS / 'scripts/dev-setup.sh', PLATFORM)
+    run('bash', TOOLS / 'scripts/builder.sh', '--setup')
     print('Setup complete. Local sources and runtime data are preserved. Run ./bilibi start.')
 
 
@@ -294,8 +296,9 @@ def update():
     head = run('git', 'rev-parse', 'HEAD', capture=True).strip()
     if head != target:
         run('git', '-c', 'core.hooksPath=/dev/null', 'merge', '--ff-only', '--no-autostash', target)
-        # Use the updated command implementation and recipe after pulling scripts.
-        os.execv(sys.executable, [sys.executable, str(ROOT / 'scripts/workspace.py'), 'update'])
+        # Re-read the application recipe after pulling. Adopted workspaces keep
+        # the maker tooling the bootstrap installed for this update through this handoff.
+        os.execv(sys.executable, [sys.executable, str(TOOLS / 'scripts/workspace.py'), 'update'])
     for folder, source, allowed in replacements:
         # These bytes were proven to be generated, and the index was clean.
         for path in allowed:
@@ -343,6 +346,9 @@ def upgrade_request(repository, default, branch):
 
 def upgrade():
     """Merge the maker's reviewed-by-pull-request updates; never run what was just fetched."""
+    if (ROOT / 'maker.lock').exists():
+        raise ValueError(f'{ROOT}: this application has adopted shared maker tooling (maker.lock), so it takes maker '
+                         'updates with ./bilibi update; ./bilibi upgrade merges maker files and would undo the adoption')
     update_clean(ROOT, command='upgrade')
     if remote_url('upstream') != MAKER:
         action = 'set-url' if remote_url('upstream') else 'add'
@@ -599,15 +605,20 @@ def choose_versions(yes=False):
 
 def copy_build_files(candidate):
     for name in ('scripts', 'composition'):
-        shutil.copytree(ROOT / name, candidate / name, ignore=shutil.ignore_patterns('__pycache__', 'node_modules'))
+        shutil.copytree((TOOLS if name == 'scripts' else ROOT) / name, candidate / name,
+                        ignore=shutil.ignore_patterns('__pycache__', 'node_modules'))
     for name in ('setup.toml', 'builder.toml', 'rust-toolchain.toml'):
         shutil.copyfile(ROOT / name, candidate / name)
+    # The build fingerprint covers the maker an adopted application records.
+    # Only ./bilibi update moves maker.lock; a build never rewrites it.
+    if (ROOT / 'maker.lock').is_file():
+        shutil.copyfile(ROOT / 'maker.lock', candidate / 'maker.lock')
 
 
 def candidate_environment():
     env = dict(os.environ)
     # A candidate must never restore over the developer's local source branches.
-    for key in ('BILIBI_SOURCE_DIR', 'BILIBI_BUILD_DIR', 'CARGO_TARGET_DIR'):
+    for key in ('BILIBI_SOURCE_DIR', 'BILIBI_BUILD_DIR', 'CARGO_TARGET_DIR', 'BILIBI_TOOL_APPLICATION_ROOT'):
         env.pop(key, None)
     return env
 
@@ -659,7 +670,7 @@ def release(tag):
 
 def record_fingerprint(root):
     digest = hashlib.sha256()
-    for name in RECORD_FILES:
+    for name in RECORD_FILES + (('maker.lock',) if (root / 'maker.lock').exists() else ()):
         digest.update(name.encode() + b'\0' + (root / name).read_bytes() + b'\0')
     return digest.hexdigest()
 
@@ -754,8 +765,10 @@ def main():
               '  status        List the Platform, Domains and Extensions, with their branches,\n'
               '                your uncommitted changes, and any difference from the saved versions.\n\n'
               'Work with your team\n'
-              '  update        Get your team\'s latest pushed changes, and switch every source\n'
-              '                to the versions saved in setup.toml.\n'
+              '  update        Get your team\'s changes and saved source versions. After\n'
+              '                one-time adoption it first moves maker.lock to the newest\n'
+              '                maker and lists the maker commits; commit maker.lock in a PR.\n'
+              '                --to <commit> or --back returns to an earlier maker.\n'
               '\n'
               'Before a release\n'
               '  check         Choose versions, then build and test against an empty test\n'
@@ -766,10 +779,12 @@ def main():
               '                Commit the build record and start the release on GitHub.\n'
               '                docs/guides/releasing.md explains the final publish step.\n\n'
               'Stay current with the maker\n'
-              '  upgrade       Merge the maker\'s improvements on a new branch and open one pull\n'
-              '                request for you to review. docs/guides/maker-updates.md explains it.\n\n'
+              '  upgrade       For applications without maker.lock: merge the maker\'s files on a\n'
+              '                new branch and open one pull request for you to review. Adopted\n'
+              '                applications use update. docs/guides/maker-updates.md explains both.\n\n'
               'Less often\n'
               '  setup         Install the tools and fetch the sources, without starting.\n'
+              '  adopt         One-time shared-tooling adoption; see docs/guides/maker-updates.md.\n'
               '  help          Show this list.')
         return
     if args.command == 'status':

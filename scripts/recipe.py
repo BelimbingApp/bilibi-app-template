@@ -13,7 +13,7 @@ import tempfile
 import tomllib
 from urllib.parse import urlsplit
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(os.environ.get('BILIBI_TOOL_APPLICATION_ROOT', Path(__file__).resolve().parent.parent)).resolve()
 BUILD = Path(os.environ.get('BILIBI_BUILD_DIR', ROOT / 'build')).resolve()
 SOURCES = Path(os.environ.get('BILIBI_SOURCE_DIR', ROOT / 'sources')).resolve()
 PLATFORM = SOURCES / 'platform'
