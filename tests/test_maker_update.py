@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import time
 import tomllib
 import unittest
@@ -126,6 +127,34 @@ class MakerUpdateTest(WorkspaceFixture):
         helper.write_bytes(transport)
         self.command('update')
         self.assertEqual(self.selected()['commit'], self.second)
+
+    def test_adopted_guard_upgrades_previous_guard_and_checks_commits(self):
+        # Persisted state: the exact v2 guard earlier releases wrote for applications.
+        hook = self.app / '.git/hooks/pre-commit'
+        hook.parent.mkdir(exist_ok=True)
+        hook.write_text('#!/usr/bin/env bash\n# Bilibi repository guard v2\nset -euo pipefail\n'
+                        'root=$(git rev-parse --show-toplevel)\ncd -- "$root"\n'
+                        'previous=$(dirname -- "${BASH_SOURCE[0]}")/pre-commit.before-bilibi\n'
+                        'if [[ -x $previous ]]; then "$previous" "$@"; fi\n'
+                        'exec python3 "$root"/scripts/workspace.py check-staged\n')
+        hook.chmod(0o755)
+        tools = self.state / self.first / 'scripts'
+        subprocess.run([sys.executable, '-c', 'import sys; sys.path.insert(0, sys.argv[1]); import workspace; workspace.hooks()',
+                        str(tools)], env={**self.env, 'BILIBI_TOOL_APPLICATION_ROOT': str(self.app), 'PYTHONDONTWRITEBYTECODE': '1'},
+                       cwd=self.root, check=True, capture_output=True, text=True, timeout=30)
+        self.assertFalse((hook.parent / 'pre-commit.before-bilibi').exists())
+        # The guard must not depend on copied tooling the adopted application no longer uses.
+        shutil.rmtree(self.app / 'scripts')
+        self.git(self.app, 'add', '.')
+        accepted = subprocess.run(['git', '-C', str(self.app), 'commit', '-m', 'Drop copied tooling'],
+                                  env=self.env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(accepted.returncode, 0, accepted.stdout + accepted.stderr)
+        (self.app / 'composition/Cargo.lock').write_text('# Tampered lock\n')
+        self.git(self.app, 'add', 'composition/Cargo.lock')
+        refused = subprocess.run(['git', '-C', str(self.app), 'commit', '-m', 'Inconsistent record'],
+                                 env=self.env, capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(refused.returncode, 0, refused.stdout + refused.stderr)
+        self.assertNotIn('invalid choice', refused.stderr)
 
     def test_cache_tampering_never_executes_and_has_narrow_recovery(self):
         folder = self.state / self.first

@@ -83,7 +83,7 @@ def verified(folder, files):
     if actual != set(files):
         return False
     return all(not (folder / name).is_symlink()
-               and not any(parent.is_symlink() for parent in (folder / name).parents if parent != folder.parent)
+               and not any((folder / parent).is_symlink() for parent in Path(name).parents)
                and (folder / name).read_bytes() == data
                and (folder / name).stat().st_mode & 0o777 == mode
                for name, (data, mode) in files.items())

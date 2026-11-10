@@ -102,7 +102,8 @@ def hooks():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     module.install(PLATFORM, ['python3', 'scripts/discover-modules.py', '--check'])
-    module.install(ROOT, ['./bilibi', 'check-staged'])
+    module.install(ROOT, ['python3', 'bilibi', 'check-staged'],
+                   replaces=[['python3', 'scripts/workspace.py', 'check-staged']])
 
 
 def output_paths():
