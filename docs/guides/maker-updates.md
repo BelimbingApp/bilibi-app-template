@@ -1,24 +1,100 @@
 # Taking maker updates
 
-After one-time adoption, run:
+Your application uses shared tooling from the maker, such as the setup, build and release scripts, and `./bilibi update` moves it to the newest version in one command.
+
+Here is a normal morning after the one-time [adoption](#one-time-adoption):
 
 ```sh
 ./bilibi update
 ```
 
-It checks the official maker first, installs its shared tooling, then fast-forwards your application's configured tracking branch and restores **your application's saved** Platform, Domain and Extension commits. It never chooses the newest components independently, changes `origin`, pushes a branch or opens a pull request. Build still owns choosing new component versions.
+```text
+Maker 3f2a1c9e0b7d -> 8c41d07a95e2
+Brings in 2 maker commit(s):
+  8c41d07 Explain the build cache in setup output
+  b19e4f2 Retry Platform downloads once
+Compare: https://github.com/BelimbingProject/bilibi-app-maker/compare/3f2a1c9e…...8c41d07a…
+Installed maker commit 8c41d07a…; tooling sha256 5d0e…
+Updated application and restored saved source commits and composition. Run ./bilibi build to choose new versions.
+maker.lock now records maker commit 8c41d07a… (2 in, 0 out). Commit it and open an application pull request: its diff lists the maker commits and the compare link.
+```
 
-There are no maker releases today. The normal stream is `main` at `https://github.com/BelimbingProject/bilibi-app-maker.git`. Each update selects its exact full Git commit, not an invented stable release. The command prints that commit and a SHA-256 of the tooling files. Successful selection is recorded atomically in the checkout's Git metadata at `git rev-parse --git-path bilibi-maker/selected.json`. Status prints the selected identity too.
+Notice what happened, in order. Before any new maker code ran, update listed the maker commits it was about to bring in, with a link that shows the full difference on GitHub. Then it installed that maker version, fast-forwarded your application to your team's latest pushed commit, and restored the Platform, Domain and Extension commits saved in `setup.toml`. Finally it wrote the new maker commit into `maker.lock`, which is now an uncommitted change in your checkout.
 
-The root `bilibi` is a standalone Python 3.11 bootstrap. `maker.toml` is application-owned configuration; it declares the official repository, `main` and protocol format 1. Shared runtime, setup and build scripts run from a verified, immutable-by-convention version directory under `git rev-parse --git-path bilibi-maker`. Every invocation compares its file contents and modes with the selected Git objects before executing it. Downloads use Git over HTTPS, verify the object graph, stage a complete version and rename it into place before selection. Code never runs from an incomplete installation, a network response piped to a shell or a command found on PATH. Trust is the official GitHub repository over HTTPS and your local Git configuration, not a separately signed release. Do not configure Git URL rewrites to untrusted servers.
+Notice also what did **not** happen: update did not push, did not open a pull request, and did not choose new Platform or Domain versions (that is still `./bilibi build`).
 
-The old version stays available when another is selected. The parent bootstrap keeps the update lock while the new runtime runs, including when application changes require a process handoff. An application's copied scripts cannot replace that runtime halfway through an update. Different application checkouts have separate caches and locks. Normal commands use the selected cache offline; `update` must reach the official stream, even on days when nothing changes.
+You may already have questions: why a file has to be committed, what runs in CI meanwhile, and what to do when a new maker version breaks something. We cover each of these below.
+
+## Why maker.lock?
+
+`maker.lock` is the one record of which maker version your application uses. Because the same file decides what runs everywhere, your laptop, a teammate's fresh clone, CI and the release build all run the same maker commit:
+
+| Where | Which maker runs |
+| --- | --- |
+| `./bilibi start`, `status`, `build`, `check`, `release`, `setup`, `add` | The commit in `maker.lock` in your checkout |
+| A teammate's fresh clone | The commit in `maker.lock` they cloned; never the newest maker |
+| The pre-commit hook | The commit in `maker.lock`, if it is already installed; otherwise the hook does nothing |
+| CI and release (`./bilibi tooling`) | The commit in `maker.lock` in the commit being checked |
+| `./bilibi update` | The newest official maker `main`, which it then records in `maker.lock` |
+
+**Only `./bilibi update` moves `maker.lock`.** A build, a check and a release never rewrite it. A release tags the record together with `maker.lock`, so you can always see which maker built a release.
+
+## Publishing a maker update
+
+Because `maker.lock` changes only in your checkout, your team and CI keep running the old maker until you publish the change like any other application change:
+
+```sh
+git switch -c maker-update
+git add maker.lock
+git commit -m "Take maker updates"
+git push -u origin maker-update
+gh pr create --fill
+```
+
+The pull request diff for `maker.lock` shows the new commit, the list of maker commits it brings in or removes, and the compare link. Reviewers can open that link to read every maker change, and CI checks the application with the new maker before anyone merges. Once it merges, teammates get the same maker from their next `./bilibi update`.
+
+Until you commit it, a later `./bilibi update` simply works the record out again against the newest maker, so an uncommitted `maker.lock` from an earlier update never blocks the next one.
+
+## Going back to an earlier maker
+
+When a new maker version breaks something for you, go back to the maker you used before:
+
+```sh
+./bilibi update --back
+```
+
+If you have not committed the new `maker.lock` yet, this returns to the version committed in your application. If you already merged it, this returns to the previous maker commit recorded in your application history. Either way it lists the maker commits it removes, and the resulting `maker.lock` change goes through a pull request like a forward update.
+
+To choose an exact version, give its commit ID, at least 7 characters:
+
+```sh
+./bilibi update --to 3f2a1c9
+```
+
+**Going back uses the same checks as going forward**: the commit must be on official maker `main`, and it must support this bootstrap. Then tell the maker team what broke, so the next update fixes it.
+
+## What the checks prove
+
+We trust the maker because of how changes reach it: **official maker `main` accepts changes only through pull requests, and every maker pull request is reviewed before it merges.** Your application then reviews each `maker.lock` change in its own pull request. The bootstrap adds checks that keep the code you run equal to that reviewed code:
+
+- It downloads only from `https://github.com/BelimbingProject/bilibi-app-maker.git` over HTTPS, and refuses a different `upstream` remote or a changed cache remote.
+- It runs only commits that are on official maker `main`, never an unmerged branch.
+- It checks the downloaded Git objects with `git fsck` each time it downloads.
+- It installs each maker version into its own folder, in full, before running anything from it.
+- It records a SHA-256 of the tooling files in `maker.lock`.
+
+The SHA-256 is a fingerprint, not a signature. It proves that the installed files have not changed since they were installed from that maker commit, and it lets CI check that `maker.lock` names the same files. It says nothing about who wrote the code; that trust comes from review on maker `main` and in your application.
+
+The maker versions live inside your checkout Git folder, at `git rev-parse --git-path bilibi-maker`. Ordinary commands compare the installed folder with the SHA-256 in `maker.lock` and run it without going online. Only `update`, `adopt`, and the first run of a maker version on a machine download anything.
+
+> [!WARNING]
+> Git settings in your own configuration, such as a proxy or `http.sslVerify=false`, also apply to these downloads, just as they do for `git clone`. Do not point Git URL rewrites at servers you do not trust.
 
 ## One-time adoption
 
-New applications cloned from a maker with this bootstrap can run `./bilibi adopt` after connecting `origin` to their own repository. Review and commit `bilibi`, `maker.toml` and `maker.lock`, then push through the application's usual review process. Future daily work uses only `./bilibi update`.
+New applications cloned from a maker with this bootstrap run `./bilibi adopt` after connecting `origin` to their own repository. Review and commit `bilibi`, `maker.toml` and `maker.lock`, then push through the usual review process of your application. From then on, daily work uses `./bilibi update`.
 
-For an older application with copied tooling, use a **clean checkout**, with no unresolved merge. Preserve any existing work and runtime data first. Point `upstream` at the official maker (add it if absent):
+For an older application with copied tooling, start from a **clean checkout** with no unresolved merge, and keep a copy of any work and runtime data first. Point `upstream` at the official maker (add it if it is missing):
 
 ```sh
 git remote set-url upstream https://github.com/BelimbingProject/bilibi-app-maker.git
@@ -26,7 +102,7 @@ git fetch upstream main
 git rev-parse upstream/main
 ```
 
-Review that exact maker commit. Install only its standalone bootstrap, retaining a copy of the old entry point in Git metadata:
+Review that exact maker commit. Then install only its standalone bootstrap, keeping a copy of the old entry point in Git metadata:
 
 ```sh
 git show HEAD:bilibi > .git/bilibi-before-adoption
@@ -40,26 +116,30 @@ git add bilibi maker.toml maker.lock
 git commit -m "Adopt versioned shared maker tooling"
 ```
 
-These example `.git/` paths assume an ordinary clone. In a linked worktree, obtain paths with `git rev-parse --git-path <name>` instead. Publish the adoption commit through your normal application review. Once it reaches your tracking branch and the checkout is clean, run `./bilibi update`.
+These example `.git/` paths assume an ordinary clone; in a linked worktree, get each path with `git rev-parse --git-path <name>` instead. Publish the adoption commit through your normal review. Once it reaches your tracking branch and the checkout is clean, run `./bilibi update`.
 
-Adoption checks copied tracked `scripts/` against the shared official ancestor, or the selected maker commit for unrelated histories. Unmodified older copies are supported when the historical link exists. Customized scripts stop adoption with the exact path; nothing is overwritten. Port such changes deliberately to application configuration or propose them to the maker, then retry. Unrelated histories whose copies differ also need this manual review. An old entry point cannot acquire a new updater by itself: replacing it with the reviewed bootstrap is this one-time boundary. A checkout with existing merge conflicts must be reconciled manually before adopting; do not reset it to make adoption pass.
+Adoption compares your copied `scripts/` with the official maker history. Unmodified older copies adopt cleanly. Customized scripts stop adoption with the exact path, and nothing is overwritten, so you can move such changes into application configuration or propose them to the maker, then retry. An old entry point cannot get a new updater by itself, which is why replacing it with the reviewed bootstrap is this one deliberate step. Reconcile any existing merge conflicts by hand first; do not reset the checkout to make adoption pass.
 
-`setup.toml`, `composition/`, `builder.toml`, `rust-toolchain.toml`, `.env`, the product README and application source remain application-owned. Adoption leaves copied scripts and workflows intact for inspection; `./bilibi` no longer executes those scripts. `maker.lock` records the exact maker commit and tooling SHA-256 an application last adopted or built with. `./bilibi build` and `./bilibi check` rewrite it when the selected maker differs; commit it with the build record. A successful build covers it, so `./bilibi release` tags the maker the build used. CI and release never advance it: `./bilibi tooling` verifies the recorded commit is on official `main`, installs that exact tooling and prints its directory; the maker's own checkout prints itself. The maker's `check.yml` and `release.yml` call scripts only through that directory. Copy those workflows into your application, replacing workflows that call copied `scripts/` directly, before removing the frozen copies. The maker's own checkout without `maker.toml` keeps using local scripts for development. Do not merge maker `main` into an adopted application for routine tooling updates.
+`setup.toml`, `composition/`, `builder.toml`, `rust-toolchain.toml`, `.env`, the product README and application source stay yours. Adoption leaves the copied scripts and workflows in place for inspection, but `./bilibi` no longer runs those scripts. The maker workflows `check.yml` and `release.yml` call scripts only through `./bilibi tooling`, so copy them into your application, replacing workflows that call copied `scripts/` directly, before you remove the frozen copies. Do not merge maker `main` into an adopted application for routine tooling updates. The maker checkout itself has no `maker.toml` and keeps using its own scripts for development.
 
 ## Failures and recovery
 
-This workflow is for the current pre-production development stage. Daily main changes can expose runtime incompatibilities; failures are explicit feedback. It does not deploy, migrate a database, stop a running app or roll back application data. Supported configuration is checked using the existing recipe and composition validators; unknown bootstrap protocol versions are refused before selection. There is no compatibility solver.
+This workflow is for the current development stage, before production use. It does not deploy, migrate a database, stop a running app or roll back application data. Each failure says what stopped and what to do next:
 
-- Uncommitted, staged or untracked application/component work stops the application update. The error names the checkout and inspection command. Commit or stash deliberately yourself, then retry; update never stashes, resets or discards your edits.
-- Unpushed or diverged application commits stop the fast-forward. Inspect and reconcile/publish them yourself. Unpushed component commits are refused too; published component branches remain available when the saved recipe switches to a detached revision.
-- Network failure, missing saved revisions or invalid incoming records stop with the failed command and retry guidance. Existing records and edits stay intact. A partial multi-component switch can be retried: inspect `./bilibi status`, resolve the reported problem, then rerun `./bilibi update` to finish the saved record. There is no blanket data rollback.
-- If maker selection succeeds but application update fails, output reports both installed maker and current application commits. The new maker remains selected. Resolve the application's reported problem and rerun the same command; no separate maker command is required.
-- Interrupted downloads/installations never select partial directories. Retry the same command. Leftover `install-*` staging directories in this checkout's maker cache can be retained for inspection.
-- A damaged cache is refused before execution. Move **only the exact damaged version directory named by the error** aside and retry `./bilibi update`; the Git object store will reconstruct verified files. Do not remove application sources, databases, keys or the whole checkout.
-- An incorrect maker remote or unsupported `maker.toml` is refused. Inspect `git remote -v` and the configuration, and correct it deliberately to the official BelimbingProject repository. Never use the obsolete `BelimbingApp` organisation.
-
-The bootstrap protocol deliberately stays small. A future protocol change may require another reviewed bootstrap change; ordinary shared-tooling updates do not rewrite application-owned files or merge copied implementations.
+- **Uncommitted, staged or untracked work** in the application or a component stops the application step and names the checkout. Commit or stash it yourself, then rerun. Update never stashes, resets or discards your edits; the only file it rewrites is `maker.lock`.
+- **Unpushed or diverged application commits** stop the fast-forward. Publish or reconcile them yourself. Unpushed component commits are refused too.
+- **A network failure** stops update before anything changes, and `maker.lock` stays as it was. Other commands keep working offline with the installed maker.
+- **The maker step succeeds but the application step fails**: the output shows both commits, and `maker.lock` keeps the new maker. Fix the reported problem and rerun the same command, or use `./bilibi update --back`.
+- **An interrupted download or installation** is never used. Rerun the same command. Leftover `install-*` folders in the maker cache can stay for inspection.
+- **A changed installed folder** is refused before anything runs. Move **only the folder named in the error** aside and rerun; the command installs it again from Git. Do not remove application sources, databases, keys or the whole checkout.
+- **A `maker.lock` with a commit that is not on official `main`**, or a SHA-256 that does not match its files, is refused, and nothing runs. Restore it from your application history with `git restore maker.lock`, or choose a version with `./bilibi update --to`.
+- **A wrong maker remote or an unsupported `maker.toml`** is refused. Inspect `git remote -v` and the configuration, and set it deliberately to the official BelimbingProject repository. Never use the obsolete `BelimbingApp` organisation.
+- **A maker version that needs a newer bootstrap** (a different tooling format) is refused, and `maker.lock` stays as it was. A future protocol change comes with a reviewed bootstrap change.
 
 ## Older source layout
 
-A workspace still using `build/platform` needs a separate deliberate source-layout migration before adoption. Preserve that directory, its Git history, local edits, keys and database. Do not delete `build/` as disposable output in that layout. Move sources only after verifying paths and stopping that workspace's own processes, then validate with separate disposable data. The updater does not guess how to relocate an older runtime.
+A workspace that still uses `build/platform` needs a separate, deliberate source-layout migration before adoption. Keep that directory, its Git history, local edits, keys and database, because in that layout `build/` is not disposable output. Move sources only after checking paths and stopping the processes of that workspace, then validate with separate disposable data. The updater does not guess how to move an older runtime.
+
+## Where to go next
+
+[Running your application](running.md) lists every command. [Releasing your application](releasing.md) explains how a release records the build and `maker.lock`.
