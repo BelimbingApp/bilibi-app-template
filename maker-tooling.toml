@@ -1,0 +1,2 @@
+# Bootstrap/runtime protocol, independent of the application recipe format.
+format = 1

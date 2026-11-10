@@ -20,12 +20,13 @@ On Arch and Omarchy, setup installs missing prerequisites with pacman and perfor
 
 ```text
 my-bilibi/                         # application Git repository
-├── bilibi                         # common command entry point
+├── bilibi                         # standalone stable bootstrap
+├── maker.toml                     # shared tooling source, after adoption
 ├── setup.toml                     # URLs and exact component commits
 ├── composition/
 │   ├── manifest.txt               # saved component identity
 │   └── Cargo.lock                 # saved application dependency lock
-├── scripts/
+├── scripts/                       # frozen legacy copy after adoption
 ├── sources/                       # ignored, valuable editable clones
 │   └── platform/                  # independent Platform Git repository
 │       └── apps/
@@ -57,16 +58,16 @@ Run commands from the application's root folder. `./bilibi help` shows the same 
 | `./bilibi start` | Installs anything missing, fetches the sources, runs the application, and opens it in your browser | Every time you want to run your application |
 | `./bilibi add <name>` | Adds a Domain or Extension, such as `finance`. You can also paste the `add` command that the Software page shows. | When you want a new business feature. Run `start` again afterwards. |
 | `./bilibi status` | Lists the Platform, Domains and Extensions, with their branches, your uncommitted changes, and any difference from the saved versions | When you want to see what you have changed |
-| `./bilibi update` | Gets your team's latest pushed changes, and switches every source to the versions saved in `setup.toml` | Before you start work, to match your team |
+| `./bilibi update` | Updates shared maker tooling first, then gets your team's changes and restores the saved source versions | Before you start work, to match your team |
 | `./bilibi check` | Asks about new commits, builds and tests against an empty test database, then saves your choices if it passes. | Before a release |
 | `./bilibi build` | Asks about new commits, builds the release program, then saves your choices if it succeeds. | When you make a release; see [Release your setup](releasing.md#release-your-setup) |
-| `./bilibi release --tag setup-vX.Y.Z` | Commits the build record and starts the GitHub release workflow. Refuses other uncommitted application files, or a record that has no successful build or check. | After build and check pass |
+| `./bilibi release --tag setup-vX.Y.Z` | Requires the committed successful build record and starts the GitHub release workflow. Refuses other uncommitted application files, or a record that has no successful build or check. | After build and check pass |
 | `./bilibi setup` | Installs the tools and fetches the sources, without starting | When you want everything ready in advance |
 | `./bilibi help` | Shows the command list | Any time |
 
 `./bilibi new` belongs to the Platform repository. In an application repository, you already own the application recipe.
 
-Run `./bilibi update` to receive changes published to your application branch. It restores `sources/` to the commits saved in the updated `setup.toml` and restores the saved dependency lock. **Build and check ask before saving new versions.** Update refuses real edits, staged files, untracked files and unpushed commits, and prints the affected path and next step. It can replace verified generated composition files. It never stashes your work or forces a checkout. An application branch needs a remote upstream; source commits must be published to their declared `origin`.
+After one-time adoption, run `./bilibi update` to update shared maker tooling first and receive changes published to your application branch. It restores `sources/` to the commits saved in the updated `setup.toml` and restores the saved dependency lock. **Build and check ask before saving new versions.** Update refuses real edits, staged files, untracked files and unpushed commits, and prints the affected path and next step. It can replace verified generated composition files. It never stashes your work or forces a checkout. An application branch needs a remote upstream; source commits must be published to their declared `origin`.
 
 Copy the install command from **Administration › System › Software** and run it from your application root:
 
@@ -85,6 +86,10 @@ Repeated setup does not fetch existing clones, so an unavailable remote cannot d
 Setup installs a repository-local Platform pre-commit hook that runs its own `scripts/discover-modules.py --check`. This rejects staged mounted composition and foreign path packages in the Platform lock. The application pre-commit hook validates the staged recipe, manifest and lock together; its application lock is allowed in Git. CI also validates the saved set because local hooks can be bypassed.
 
 An existing executable pre-commit hook is preserved as `pre-commit.before-bilibi` in the same hook directory and runs first. Its failure stops the commit. Installation is repeatable. The guard finds its repository when it runs, so renaming or moving a checkout does not break it; an unmodified guard from an earlier release is replaced in place, while your own edits to an installed guard are left unchanged with a recovery message. It does not change `core.hooksPath` or global Git configuration. Tracked or symlink hooks, and hook directories outside this repository, are refused so setup cannot rewrite source files or shared hooks. For a shared hook path, configure a local hook directory (for example `git config --local core.hooksPath .git/hooks` in an ordinary clone), copy the hooks you want to retain there, inspect their relative-path assumptions, then rerun `./bilibi setup`. For a symlink hook, copy its target into that local directory as an ordinary executable first.
+
+## Daily maker and application updates
+
+After [one-time shared-tooling adoption](maker-updates.md#one-time-adoption), `./bilibi update` selects official maker `main` by exact commit first, then updates your application and its saved component set. It prints the maker commit and tooling SHA-256, plus the current application commit. It never pushes or opens a pull request. Local edits or unpushed commits stop the application step with recovery guidance.
 
 ## Where to go next
 

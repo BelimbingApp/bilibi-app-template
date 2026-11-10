@@ -4,11 +4,12 @@ import argparse
 import base64
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(os.environ.get('BILIBI_TOOL_APPLICATION_ROOT', Path(__file__).resolve().parent.parent)).resolve()
 
 
 def gh(*args):

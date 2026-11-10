@@ -23,6 +23,7 @@ import recipe
 import publish
 
 ROOT, PLATFORM, BUILD = recipe.ROOT, recipe.PLATFORM, recipe.BUILD
+TOOLS = Path(__file__).resolve().parent.parent
 RECORD_FILES = ('setup.toml', 'composition/manifest.txt', 'composition/Cargo.lock')
 OFFICIAL = re.compile(r'https://github\.com/BelimbingProject/[A-Za-z0-9][A-Za-z0-9_.-]*(?:\.git)?')
 
@@ -97,11 +98,11 @@ def status():
 
 
 def hooks():
-    spec = importlib.util.spec_from_file_location('hooks', ROOT / 'scripts/install-hooks.py')
+    spec = importlib.util.spec_from_file_location('hooks', TOOLS / 'scripts/install-hooks.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     module.install(PLATFORM, ['python3', 'scripts/discover-modules.py', '--check'])
-    module.install(ROOT, ['python3', 'scripts/workspace.py', 'check-staged'])
+    module.install(ROOT, ['./bilibi', 'check-staged'])
 
 
 def output_paths():
@@ -144,8 +145,8 @@ def setup():
         os.environ['PATH'] = str(Path.home() / '.cargo/bin') + os.pathsep + os.environ['PATH']
         native_builder.prepare(native_builder.read(ROOT / 'builder.toml'))
     os.environ['BILIBI_FRONT_DOOR'] = '1'
-    run('bash', ROOT / 'scripts/dev-setup.sh', PLATFORM)
-    run('bash', ROOT / 'scripts/builder.sh', '--setup')
+    run('bash', TOOLS / 'scripts/dev-setup.sh', PLATFORM)
+    run('bash', TOOLS / 'scripts/builder.sh', '--setup')
     print('Setup complete. Local sources and runtime data are preserved. Run ./bilibi start.')
 
 
@@ -290,8 +291,9 @@ def update():
     head = run('git', 'rev-parse', 'HEAD', capture=True).strip()
     if head != target:
         run('git', '-c', 'core.hooksPath=/dev/null', 'merge', '--ff-only', '--no-autostash', target)
-        # Use the updated command implementation and recipe after pulling scripts.
-        os.execv(sys.executable, [sys.executable, str(ROOT / 'scripts/workspace.py'), 'update'])
+        # Re-read the application recipe after pulling. Adopted workspaces keep
+        # the already selected immutable maker implementation through this handoff.
+        os.execv(sys.executable, [sys.executable, str(TOOLS / 'scripts/workspace.py'), 'update'])
     for folder, source, allowed in replacements:
         # These bytes were proven to be generated, and the index was clean.
         for path in allowed:
@@ -486,7 +488,8 @@ def choose_versions(yes=False):
 
 def copy_build_files(candidate):
     for name in ('scripts', 'composition'):
-        shutil.copytree(ROOT / name, candidate / name, ignore=shutil.ignore_patterns('__pycache__', 'node_modules'))
+        shutil.copytree((TOOLS if name == 'scripts' else ROOT) / name, candidate / name,
+                        ignore=shutil.ignore_patterns('__pycache__', 'node_modules'))
     for name in ('setup.toml', 'builder.toml', 'rust-toolchain.toml'):
         shutil.copyfile(ROOT / name, candidate / name)
 
@@ -494,7 +497,7 @@ def copy_build_files(candidate):
 def candidate_environment():
     env = dict(os.environ)
     # A candidate must never restore over the developer's local source branches.
-    for key in ('BILIBI_SOURCE_DIR', 'BILIBI_BUILD_DIR', 'CARGO_TARGET_DIR'):
+    for key in ('BILIBI_SOURCE_DIR', 'BILIBI_BUILD_DIR', 'CARGO_TARGET_DIR', 'BILIBI_TOOL_APPLICATION_ROOT'):
         env.pop(key, None)
     return env
 
@@ -641,8 +644,9 @@ def main():
               '  status        List the Platform, Domains and Extensions, with their branches,\n'
               '                your uncommitted changes, and any difference from the saved versions.\n\n'
               'Work with your team\n'
-              '  update        Get your team\'s latest pushed changes, and switch every source\n'
-              '                to the versions saved in setup.toml.\n'
+              '  update        Update shared maker tooling first (after one-time adoption),\n'
+              '                then get your team\'s changes and saved source versions.\n'
+              '                No push or pull request; local edits stop the app update.\n'
               '\n'
               'Before a release\n'
               '  check         Choose versions, then build and test against an empty test\n'
@@ -654,6 +658,7 @@ def main():
               '                docs/guides/releasing.md explains the final publish step.\n\n'
               'Less often\n'
               '  setup         Install the tools and fetch the sources, without starting.\n'
+              '  adopt         One-time shared-tooling adoption; see docs/guides/maker-updates.md.\n'
               '  help          Show this list.')
         return
     if args.command == 'status':

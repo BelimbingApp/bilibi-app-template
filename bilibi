@@ -1,12 +1,201 @@
-#!/usr/bin/env bash
-# The same entry point in Platform and application repositories.
-set -euo pipefail
-root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
-if ! command -v python3 >/dev/null || ! python3 -c 'import tomllib' 2>/dev/null; then
-    echo 'Bilibi needs Python 3.11 or newer. Use Arch Linux, Omarchy, Ubuntu 24.04 or Debian 12 (including WSL2), or install a newer python3.' >&2
-    exit 1
-fi
-# Setup can install Cargo during this invocation; the launch handoff also sources this.
-# shellcheck source=/dev/null
-if [[ -f $HOME/.cargo/env ]]; then source "$HOME/.cargo/env"; fi
-exec python3 "$root/scripts/workspace.py" "$@"
+#!/usr/bin/env python3
+"""Stable Bilibi bootstrap. Application configuration stays beside this file."""
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+
+try:
+    import tomllib
+except ImportError:
+    sys.exit('Bilibi needs Python 3.11 or newer.')
+
+ROOT = Path(__file__).resolve().parent
+OFFICIAL = 'https://github.com/BelimbingProject/bilibi-app-maker.git'
+CONFIG = ROOT / 'maker.toml'
+
+
+def git(*args, cwd=ROOT):
+    return subprocess.check_output(['git', '-C', str(cwd), *args], text=True).strip()
+
+
+def atomic(path, data):
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
+        pending = Path(stream.name)
+        stream.write(data)
+    try:
+        pending.replace(path)
+    finally:
+        pending.unlink(missing_ok=True)
+
+
+def trusted():
+    if CONFIG.is_symlink():
+        raise ValueError('maker.toml must be an ordinary application-owned file')
+    if CONFIG.exists():
+        with CONFIG.open('rb') as stream:
+            config = tomllib.load(stream)
+        if config != {'format': 1, 'repository': OFFICIAL, 'stream': 'main'}:
+            raise ValueError('maker.toml: supported maker is official BelimbingProject main, format 1; inspect and correct the configuration.')
+    remotes = git('remote').splitlines()
+    if 'upstream' in remotes and git('remote', 'get-url', 'upstream').removesuffix('.git') != OFFICIAL.removesuffix('.git'):
+        raise ValueError(f'Maker upstream mismatch; inspect git remote -v and deliberately correct upstream to {OFFICIAL}. No tooling executed.')
+
+
+def payload(repository, commit):
+    """Read only regular tracked tooling files from Git's verified object graph."""
+    files = {}
+    listing = git('ls-tree', '-rz', '--full-tree', commit, cwd=repository)
+    for entry in listing.split('\0'):
+        if not entry:
+            continue
+        metadata, name = entry.split('\t', 1)
+        if not (name.startswith('scripts/') or name in ('builder.toml', 'rust-toolchain.toml', 'maker-tooling.toml', 'LICENSE')):
+            continue
+        mode, kind, identity = metadata.split()
+        if mode not in ('100644', '100755') or kind != 'blob' or '..' in Path(name).parts or Path(name).is_absolute():
+            raise ValueError(f'Unsupported maker tooling file: {name}')
+        data = subprocess.check_output(['git', '-C', str(repository), 'cat-file', 'blob', identity])
+        files[name] = (data, int(mode, 8) & 0o777)
+    if tomllib.loads(files.get('maker-tooling.toml', (b'', 0))[0].decode()) != {'format': 1}:
+        raise ValueError(f'Maker {commit} does not support this bootstrap (tooling format 1 required). Previous selection retained; retry after a supported main commit is published.')
+    if 'scripts/workspace.py' not in files:
+        raise ValueError('Maker tooling has no workspace command')
+    return files
+
+
+def digest(files):
+    value = hashlib.sha256()
+    for name, (data, mode) in sorted(files.items()):
+        value.update(name.encode() + b'\0' + str(mode).encode() + b'\0' + data + b'\0')
+    return value.hexdigest()
+
+
+def verified(folder, files):
+    if folder.is_symlink() or not folder.is_dir():
+        return False
+    actual = {str(path.relative_to(folder)) for path in folder.rglob('*') if path.is_file() or path.is_symlink()}
+    if actual != set(files):
+        return False
+    return all(not (folder / name).is_symlink()
+               and not any(parent.is_symlink() for parent in (folder / name).parents if parent != folder.parent)
+               and (folder / name).read_bytes() == data
+               and (folder / name).stat().st_mode & 0o777 == mode
+               for name, (data, mode) in files.items())
+
+
+def select(state, refresh):
+    repository = state / 'objects.git'
+    if repository.is_symlink():
+        raise ValueError(f'{repository}: symlinked object cache refused')
+    if not repository.exists():
+        subprocess.run(['git', 'init', '--bare', '--quiet', str(repository)], check=True)
+        git('remote', 'add', 'origin', OFFICIAL, cwd=repository)
+    if git('remote', 'get-url', 'origin', cwd=repository) != OFFICIAL:
+        raise ValueError(f'{repository}: trusted upstream mismatch; leave this cache intact for inspection and use a fresh clone.')
+    marker = state / 'selected.json'
+    saved = json.loads(marker.read_text()) if marker.exists() else None
+    if refresh or saved is None:
+        try:
+            git('-c', 'core.hooksPath=/dev/null', 'fetch', '--quiet', '--no-tags', 'origin', '+refs/heads/main:refs/heads/main', cwd=repository)
+            commit = git('rev-parse', 'refs/heads/main^{commit}', cwd=repository)
+        except subprocess.CalledProcessError as error:
+            raise ValueError('Cannot obtain official maker main; no new selection installed. Check GitHub connectivity/access, then retry ./bilibi update.') from error
+    else:
+        if saved.get('repository') != OFFICIAL or saved.get('stream') != 'main':
+            raise ValueError('Invalid maker selection provenance; inspect selected.json before retrying ./bilibi update.')
+        commit = saved['commit']
+    if not re.fullmatch('[0-9a-f]{40}', commit):
+        raise ValueError('Invalid maker commit identity')
+    git('fsck', '--no-reflogs', '--no-dangling', commit, cwd=repository)
+    files = payload(repository, commit)
+    checksum = digest(files)
+    if not refresh and saved and saved.get('sha256') != checksum:
+        raise ValueError('Maker selection digest mismatch; no tooling executed. Retry ./bilibi update to verify the official stream.')
+    folder = state / commit
+    if (folder.exists() or folder.is_symlink()) and not verified(folder, files):
+        raise ValueError(f'{folder}: damaged tooling cache; no tooling executed. Move only this directory aside for inspection, then retry ./bilibi update.')
+    if not folder.exists():
+        with tempfile.TemporaryDirectory(prefix='install-', dir=state) as temp:
+            pending = Path(temp) / 'tooling'
+            pending.mkdir()
+            for name, (data, mode) in files.items():
+                path = pending / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data)
+                path.chmod(mode)
+            if not verified(pending, files):
+                raise ValueError('Incomplete maker installation; previous selection retained')
+            pending.rename(folder)
+    selection = {'repository': OFFICIAL, 'stream': 'main', 'commit': commit, 'sha256': checksum}
+    atomic(marker, (json.dumps(selection, indent=2) + '\n').encode())
+    print(f'Maker main commit {commit}; tooling sha256 {checksum}', flush=True)
+    return folder, repository, commit
+
+
+def adopt(repository, commit):
+    if CONFIG.exists():
+        raise ValueError('Already adopted; use ./bilibi update.')
+    # Only the deliberately replaced bootstrap may be dirty at this boundary.
+    changed = git('status', '--porcelain=v1', '--untracked-files=all', '-z')
+    if any(entry[3:] != 'bilibi' for entry in changed.split('\0') if entry):
+        raise ValueError('Adoption requires a clean application except for the reviewed bilibi bootstrap. Commit or stash local work yourself, then retry ./bilibi adopt.')
+    # Find the historical official copy so older unmodified scripts can migrate.
+    # The fetched objects are separate; import them without changing any app ref.
+    git('-c', 'core.hooksPath=/dev/null', 'fetch', '--quiet', '--no-tags', str(repository), commit)
+    base = subprocess.run(['git', '-C', str(ROOT), 'merge-base', 'HEAD', commit],
+                          text=True, capture_output=True).stdout.strip() or commit
+    changes = git('diff', '--name-only', '--no-ext-diff', '--no-renames', base, 'HEAD', '--', 'scripts').splitlines()
+    if changes:
+        raise ValueError(f'{changes[0]}: customized copied tooling; adoption stopped. Port this customization deliberately to application configuration or upstream maker before adoption; no application files changed.')
+    atomic(CONFIG, f'format = 1\nrepository = "{OFFICIAL}"\nstream = "main"\n'.encode())
+    print('Adopted shared maker tooling. Review and commit bilibi and maker.toml, then push through your usual review. Copied scripts remain intact but are no longer used by ./bilibi.')
+
+
+def main():
+    command = sys.argv[1:]
+    if (Path.home() / '.cargo/env').is_file():
+        os.environ['PATH'] = str(Path.home() / '.cargo/bin') + os.pathsep + os.environ.get('PATH', '')
+    if not CONFIG.exists() and not CONFIG.is_symlink() and command != ['adopt']:
+        # Maker development / a legacy workspace, until explicit adoption.
+        os.execv(sys.executable, [sys.executable, str(ROOT / 'scripts/workspace.py'), *command])
+    trusted()
+    location = Path(git('rev-parse', '--git-path', 'bilibi-maker'))
+    state = location if location.is_absolute() else ROOT / location
+    if state.is_symlink():
+        raise ValueError(f'{state}: symlinked maker state refused')
+    state.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with (state / 'lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            folder, repository, commit = select(state, command in (['update'], ['adopt']))
+        except (ValueError, KeyError, OSError, subprocess.CalledProcessError):
+            print(f'Application remains at commit {git("rev-parse", "HEAD")}; inspect maker selection at {state / "selected.json"}.', file=sys.stderr)
+            raise
+        if command == ['adopt']:
+            adopt(repository, commit)
+            return
+        env = {**os.environ, 'BILIBI_TOOL_APPLICATION_ROOT': str(ROOT), 'PYTHONDONTWRITEBYTECODE': '1'}
+        # Only update holds selection ownership across runtime handoffs. A long
+        # running start must allow daily updates in another terminal. Old version
+        # directories stay intact for commands already using them.
+        if command != ['update']:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+        result = subprocess.run([sys.executable, str(folder / 'scripts/workspace.py'), *command], cwd=ROOT, env=env)
+        if command == ['update']:
+            print(f'Application commit {git("rev-parse", "HEAD")}; maker commit {commit}', flush=True)
+            if result.returncode:
+                print('Application update failed; maker selection above is installed. Local work/data retained. Resolve the reported application problem and rerun ./bilibi update.', file=sys.stderr)
+        sys.exit(result.returncode)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (ValueError, KeyError, OSError, subprocess.CalledProcessError) as error:
+        sys.exit(str(error))

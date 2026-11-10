@@ -22,7 +22,7 @@ Bilibi has three kinds of repository:
 | [`bilibi`](https://github.com/BelimbingProject/bilibi) | Bilibi's source code: the Platform | Change Bilibi itself, or build a Domain or Extension for everyone |
 | Your application, such as `your-company/my-bilibi` | One product: the Bilibi, Domain and Extension versions it uses, and its releases | Work on your product, once you have made it |
 
-You clone the maker, and your clone becomes your application. It keeps the maker's working parts as they are, such as the `./bilibi` commands, the checks and the release scripts. You replace its sample parts with your own, such as the `YOUR-ORGANISATION` names in these guides. When the maker improves, you merge its changes into your application: see [Take maker updates](maker-updates.md#take-maker-updates).
+You clone the maker, and your clone becomes your application. It keeps the maker's working parts as they are, such as the `./bilibi` commands, the checks and the release scripts. You replace its sample parts with your own, such as the `YOUR-ORGANISATION` names in these guides. After one-time adoption, shared tooling is a versioned dependency invoked by the standalone root bootstrap. Daily `./bilibi update` updates the maker first, then the application and its saved component set: see [Take maker updates](maker-updates.md).
 
 If you started in `bilibi` instead, `./bilibi new <name>` there turns what you built into an application like this one.
 
@@ -36,7 +36,7 @@ Today the maker gives you a running Bilibi and the commands to build, check and 
 | Make it yours | Four Git commands, in [Start here](../../README.md#start-here) | `./bilibi own <owner/name>` ([#12](https://github.com/BelimbingProject/bilibi-app-maker/issues/12)) |
 | Use private Domains | Set up a GitHub App by hand, in [Private sources](private-sources.md#private-sources) | One command ([#13](https://github.com/BelimbingProject/bilibi-app-maker/issues/13)) |
 | Release and install | `./bilibi release --tag setup-vX.Y.Z` starts the release; [publish the draft and install it](releasing.md#release-your-setup) | Combine the remaining steps ([#14](https://github.com/BelimbingProject/bilibi-app-maker/issues/14)) |
-| Stay current | Merge maker updates and move the Platform, separately | `./bilibi upgrade` ([#15](https://github.com/BelimbingProject/bilibi-app-maker/issues/15)) |
+| Stay current | `./bilibi update` updates shared maker tooling, then the application and saved source versions | Automatic component recommendations and upgrade notes remain separate work ([#15](https://github.com/BelimbingProject/bilibi-app-maker/issues/15)) |
 
 ## Where to go next
 
