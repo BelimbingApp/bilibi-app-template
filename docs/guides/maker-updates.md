@@ -25,6 +25,18 @@ Notice also what did **not** happen: update did not push, did not open a pull re
 
 You may already have questions: why a file has to be committed, what runs in CI meanwhile, and what to do when a new maker version breaks something. We cover each of these below.
 
+## Which command?
+
+There are two ways to take maker changes. They suit different applications:
+
+| | `./bilibi update` | `./bilibi upgrade` |
+| --- | --- | --- |
+| For | An application that has done the [one-time adoption](#one-time-adoption): it has `maker.toml` and `maker.lock` | An application that still carries copied maker files and has not adopted shared tooling |
+| How | Moves `maker.lock` to the newest maker; no maker files are merged | Merges the maker's `main` into a new branch and opens one pull request |
+| Result | One changed file, `maker.lock`, in your checkout, which you commit in a pull request | A pull request containing the maker's file changes |
+
+If your application has `maker.lock`, use `update`; `./bilibi upgrade` stops there and says so. If it has not adopted yet, `upgrade` keeps it current until you adopt.
+
 ## Why maker.lock?
 
 `maker.lock` is the one record of which maker version your application uses. Because the same file decides what runs everywhere, your laptop, a teammate's fresh clone, CI and the release build all run the same maker commit:
@@ -89,6 +101,27 @@ The maker versions live inside your checkout Git folder, at `git rev-parse --git
 
 > [!WARNING]
 > Git settings in your own configuration, such as a proxy or `http.sslVerify=false`, also apply to these downloads, just as they do for `git clone`. Do not point Git URL rewrites at servers you do not trust.
+
+## Merging maker files with upgrade
+
+Applications that have not adopted shared tooling take maker changes with one command and one pull request you can review. From your default branch, such as `main`:
+
+```sh
+./bilibi upgrade
+```
+
+It does four things:
+
+1. **Checks that it is safe to start.** Your checkout must have no uncommitted work and be level with `origin`, `upstream` must be exactly `https://github.com/BelimbingProject/bilibi-app-maker.git`, and the GitHub CLI (`gh`) must be installed and signed in. Otherwise it stops, changes nothing, and prints what to fix.
+2. **Merges on a new branch.** It fetches the maker's `main`, creates a branch such as `maker-upgrade-1ab6321`, named after the maker commit, and merges the maker into it.
+3. **Opens one pull request.** It pushes the branch to `origin` and opens a pull request in your repository. The description lists the maker commits and links to the same changes in the maker.
+4. **Returns you to your default branch**, unchanged.
+
+Nothing from the maker runs on your computer during the upgrade. **Merge that pull request with a merge commit, not a squash.** A squash drops the link to the maker, and the next upgrade brings the same changes in again. When there is nothing new, upgrade says "Already up to date with the maker" and changes nothing.
+
+If the merge stops on a conflict, upgrade stops on the new branch before pushing and lists the conflicted files. Keep what you need from both sides (for `setup.toml` and `composition/`, keep yours), run `git add --all` and `git commit --no-edit`, then run `./bilibi upgrade` again. The message also prints the commands that undo the merge.
+
+Upgrade does not move the Platform, Domains and Extensions in `setup.toml` to newer releases; choose new versions with `./bilibi build`, as [Releasing your application](releasing.md) explains.
 
 ## One-time adoption
 
