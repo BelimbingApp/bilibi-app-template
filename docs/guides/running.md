@@ -22,7 +22,7 @@ On Arch and Omarchy, setup installs missing prerequisites with pacman and perfor
 my-bilibi/                         # application Git repository
 ├── bilibi                         # standalone stable bootstrap
 ├── maker.toml                     # shared tooling source, after adoption
-├── maker.lock                     # maker commit recorded by adopt/build, used by CI
+├── maker.lock                     # the maker commit every command and CI runs
 ├── setup.toml                     # URLs and exact component commits
 ├── composition/
 │   ├── manifest.txt               # saved component identity
@@ -59,7 +59,7 @@ Run commands from the application's root folder. `./bilibi help` shows the same 
 | `./bilibi start` | Installs anything missing, fetches the sources, runs the application, and opens it in your browser | Every time you want to run your application |
 | `./bilibi add <name>` | Adds a Domain or Extension, such as `finance`. You can also paste the `add` command that the Software page shows. | When you want a new business feature. Run `start` again afterwards. |
 | `./bilibi status` | Lists the Platform, Domains and Extensions, with their branches, your uncommitted changes, and any difference from the saved versions | When you want to see what you have changed |
-| `./bilibi update` | Updates shared maker tooling first, then gets your team's changes and restores the saved source versions | Before you start work, to match your team |
+| `./bilibi update` | Moves `maker.lock` to the newest maker (listing its commits), then gets your team's changes and restores the saved source versions. `--back` or `--to <commit>` returns to an earlier maker. | Before you start work, to match your team |
 | `./bilibi check` | Asks about new commits, builds and tests against an empty test database, then saves your choices if it passes. | Before a release |
 | `./bilibi build` | Asks about new commits, builds the release program, then saves your choices if it succeeds. | When you make a release; see [Release your setup](releasing.md#release-your-setup) |
 | `./bilibi release --tag setup-vX.Y.Z` | Requires the committed successful build record and starts the GitHub release workflow. Refuses other uncommitted application files, or a record that has no successful build or check. | After build and check pass |
@@ -68,7 +68,7 @@ Run commands from the application's root folder. `./bilibi help` shows the same 
 
 `./bilibi new` belongs to the Platform repository. In an application repository, you already own the application recipe.
 
-After one-time adoption, run `./bilibi update` to update shared maker tooling first and receive changes published to your application branch. It restores `sources/` to the commits saved in the updated `setup.toml` and restores the saved dependency lock. **Build and check ask before saving new versions.** Update refuses real edits, staged files, untracked files and unpushed commits, and prints the affected path and next step. It can replace verified generated composition files. It never stashes your work or forces a checkout. An application branch needs a remote upstream; source commits must be published to their declared `origin`.
+Run `./bilibi update` to receive changes published to your application branch; after one-time adoption it first moves `maker.lock` to the newest maker. It restores `sources/` to the commits saved in the updated `setup.toml` and restores the saved dependency lock. **Build and check ask before saving new versions.** Update refuses real edits, staged files, untracked files and unpushed commits, and prints the affected path and next step. It can replace verified generated composition files. It never stashes your work or forces a checkout. An application branch needs a remote upstream; source commits must be published to their declared `origin`.
 
 Copy the install command from **Administration › System › Software** and run it from your application root:
 
@@ -90,7 +90,7 @@ An existing executable pre-commit hook is preserved as `pre-commit.before-bilibi
 
 ## Daily maker and application updates
 
-After [one-time shared-tooling adoption](maker-updates.md#one-time-adoption), `./bilibi update` selects official maker `main` by exact commit first, then updates your application and its saved component set. It prints the maker commit and tooling SHA-256, plus the current application commit. It never pushes or opens a pull request. Local edits or unpushed commits stop the application step with recovery guidance.
+After [one-time shared-tooling adoption](maker-updates.md#one-time-adoption), every command runs the maker commit recorded in `maker.lock`. `./bilibi update` first lists the maker commits between that record and official maker `main`, installs the newest one and writes it into `maker.lock`, then updates your application and its saved component set. It never pushes or opens a pull request: commit `maker.lock` and open one yourself, as [Publishing a maker update](maker-updates.md#publishing-a-maker-update) shows. Local edits or unpushed commits stop the application step with recovery guidance.
 
 ## Where to go next
 

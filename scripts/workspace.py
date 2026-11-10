@@ -293,7 +293,7 @@ def update():
     if head != target:
         run('git', '-c', 'core.hooksPath=/dev/null', 'merge', '--ff-only', '--no-autostash', target)
         # Re-read the application recipe after pulling. Adopted workspaces keep
-        # the already selected immutable maker implementation through this handoff.
+        # the maker tooling the bootstrap installed for this update through this handoff.
         os.execv(sys.executable, [sys.executable, str(TOOLS / 'scripts/workspace.py'), 'update'])
     for folder, source, allowed in replacements:
         # These bytes were proven to be generated, and the index was clean.
@@ -493,8 +493,10 @@ def copy_build_files(candidate):
                         ignore=shutil.ignore_patterns('__pycache__', 'node_modules'))
     for name in ('setup.toml', 'builder.toml', 'rust-toolchain.toml'):
         shutil.copyfile(ROOT / name, candidate / name)
-    if 'BILIBI_MAKER_SELECTION' in os.environ:
-        (candidate / 'maker.lock').write_text(os.environ['BILIBI_MAKER_SELECTION'])
+    # The build fingerprint covers the maker an adopted application records.
+    # Only ./bilibi update moves maker.lock; a build never rewrites it.
+    if (ROOT / 'maker.lock').is_file():
+        shutil.copyfile(ROOT / 'maker.lock', candidate / 'maker.lock')
 
 
 def candidate_environment():
@@ -530,16 +532,6 @@ def build(command, yes=False):
         subprocess.run(['bash', str(candidate / 'scripts/builder.sh'), script], env=env, check=True)
         if accepted:
             save_record(candidate, observed, before)
-        lock = candidate / 'maker.lock'
-        if lock.exists() and not ((ROOT / 'maker.lock').is_file() and (ROOT / 'maker.lock').read_bytes() == lock.read_bytes()):
-            with tempfile.NamedTemporaryFile(prefix='.bilibi-record-', dir=ROOT, delete=False) as stream:
-                pending = Path(stream.name)
-                stream.write(lock.read_bytes())
-            try:
-                pending.chmod(0o644)
-                pending.replace(ROOT / 'maker.lock')
-            finally:
-                pending.unlink(missing_ok=True)
         mark_successful_build(candidate)
 
 
@@ -657,9 +649,10 @@ def main():
               '  status        List the Platform, Domains and Extensions, with their branches,\n'
               '                your uncommitted changes, and any difference from the saved versions.\n\n'
               'Work with your team\n'
-              '  update        Update shared maker tooling first (after one-time adoption),\n'
-              '                then get your team\'s changes and saved source versions.\n'
-              '                No push or pull request; local edits stop the app update.\n'
+              '  update        Get your team\'s changes and saved source versions. After\n'
+              '                one-time adoption it first moves maker.lock to the newest\n'
+              '                maker and lists the maker commits; commit maker.lock in a PR.\n'
+              '                --to <commit> or --back returns to an earlier maker.\n'
               '\n'
               'Before a release\n'
               '  check         Choose versions, then build and test against an empty test\n'

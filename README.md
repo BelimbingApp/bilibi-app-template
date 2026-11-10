@@ -29,7 +29,7 @@ cd my-bilibi
 
 Your copy opens at `https://bilibi.localhost`. If you run more than one Bilibi on this computer, give each its own name with `BILIBI_DEV_HOST=<name>.localhost` in `.env` beside `./bilibi`; see [Settings](docs/guides/settings.md).
 
-Leave `./bilibi start` running; it rebuilds and reloads when the code changes. Run `./bilibi update` any time, including in another terminal while start is running, to update shared maker tooling first, then bring your application and sources to their saved commits (after the one-time adoption below).
+Leave `./bilibi start` running; it rebuilds and reloads when the code changes. Run `./bilibi update` any time, including in another terminal while start is running, to bring your application and sources to their saved commits. After the one-time adoption below, it first moves `maker.lock` to the newest maker and lists the maker commits, so you can publish that change in a pull request.
 
 The first start installs what is missing, such as Rust, PostgreSQL and Node, and builds Bilibi, so it takes a while. On the first start, Bilibi opens in your browser at the sign-in page. Later starts print its address. Sign in as `ai@agent.my` / `bilibi-dev`. You now have the Platform on its own: sign-in, companies, people, users, permissions and audit.
 
@@ -68,7 +68,7 @@ git commit -m "Adopt versioned shared maker tooling"
 git push -u origin main
 ```
 
-Your folder now has two remotes. `origin` is your application, where you push. `upstream` is the maker, for provenance. Daily `./bilibi update` takes its later tooling improvements without merging maker files: see [Take maker updates](docs/guides/maker-updates.md).
+Your folder now has two remotes. `origin` is your application, where you push. `upstream` is the maker. `./bilibi update` takes its later tooling improvements without merging maker files, and records the maker version in `maker.lock`: see [Take maker updates](docs/guides/maker-updates.md).
 
 > [!WARNING]
 > Clone the maker as shown. A copy made any other way, such as a downloaded ZIP file, has none of the maker's history. One-time adoption then needs matching official copied tooling or a deliberate manual review.
@@ -90,7 +90,7 @@ To install it on a server, follow [Release your setup](docs/guides/releasing.md#
 - [Releasing your application](docs/guides/releasing.md): build, check and release your application.
 - [Installing a release](docs/guides/installing.md): put a tested release on Staging and Production.
 - [Private sources](docs/guides/private-sources.md): give checks access to private repositories.
-- [Taking maker updates](docs/guides/maker-updates.md): one-command updates, version identity, one-time adoption and recovery.
+- [Taking maker updates](docs/guides/maker-updates.md): one-command updates, `maker.lock`, going back to an earlier maker, one-time adoption and recovery.
 - [Application repositories](docs/guides/about.md): where changes belong and what the maker provides.
 
 ## File length
