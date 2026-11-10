@@ -68,7 +68,7 @@ git commit -m "Adopt versioned shared maker tooling"
 git push -u origin main
 ```
 
-Your folder now has two remotes. `origin` is your application, where you push. `upstream` is the maker. `./bilibi update` takes its later tooling improvements without merging maker files, and records the maker version in `maker.lock`: see [Take maker updates](docs/guides/maker-updates.md).
+Your folder now has two remotes. `origin` is your application, where you push. `upstream` is the maker. `./bilibi update` takes its later tooling improvements without merging maker files, and records the maker version in `maker.lock`. An application that still carries copied maker files uses `./bilibi upgrade` instead, which merges them through one pull request. See [Take maker updates](docs/guides/maker-updates.md).
 
 > [!WARNING]
 > Clone the maker as shown. A copy made any other way, such as a downloaded ZIP file, has none of the maker's history. One-time adoption then needs matching official copied tooling or a deliberate manual review.
@@ -90,7 +90,7 @@ To install it on a server, follow [Release your setup](docs/guides/releasing.md#
 - [Releasing your application](docs/guides/releasing.md): build, check and release your application.
 - [Installing a release](docs/guides/installing.md): put a tested release on Staging and Production.
 - [Private sources](docs/guides/private-sources.md): give checks access to private repositories.
-- [Taking maker updates](docs/guides/maker-updates.md): one-command updates, `maker.lock`, going back to an earlier maker, one-time adoption and recovery.
+- [Taking maker updates](docs/guides/maker-updates.md): `./bilibi update` for adopted applications (`maker.lock`, going back, one-time adoption, recovery) and `./bilibi upgrade` for merging maker files.
 - [Application repositories](docs/guides/about.md): where changes belong and what the maker provides.
 
 ## File length
