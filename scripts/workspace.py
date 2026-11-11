@@ -766,7 +766,7 @@ def main():
               '                your uncommitted changes, and any difference from the saved versions.\n\n'
               'Work with your team\n'
               '  update        Get your team\'s changes and saved source versions. After\n'
-              '                one-time adoption it first moves maker.lock to the newest\n'
+              '                first setup it first moves maker.lock to the newest\n'
               '                maker and lists the maker commits; commit maker.lock in a PR.\n'
               '                --to <commit> or --back returns to an earlier maker.\n'
               '\n'
@@ -783,8 +783,8 @@ def main():
               '                new branch and open one pull request for you to review. Adopted\n'
               '                applications use update. docs/guides/maker-updates.md explains both.\n\n'
               'Less often\n'
-              '  setup         Install the tools and fetch the sources, without starting.\n'
-              '  adopt         One-time shared-tooling adoption; see docs/guides/maker-updates.md.\n'
+              '  setup         Adopt shared tooling once, then prepare sources and prerequisites.\n'
+              '                Reruns use maker.lock; no build, start or database migration.\n'
               '  help          Show this list.')
         return
     if args.command == 'status':

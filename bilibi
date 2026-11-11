@@ -40,7 +40,7 @@ def cache_environment():
 
 def git(*args, cwd=ROOT):
     env = None if cwd == ROOT else cache_environment()
-    return subprocess.check_output(['git', '-C', str(cwd), *args], text=True, env=env).strip()
+    return subprocess.check_output(['git', '-C', str(cwd), *args], text=True, env=env).rstrip('\n')
 
 
 def succeeds(*args, cwd):
@@ -332,28 +332,78 @@ def update(state, args):
     return result.returncode
 
 
+def script_history(repository, commit):
+    versions = {}
+    history = iter(git('log', '--format=', '--raw', '--full-history', '--no-abbrev', '--no-renames',
+                       '--root', '-m', '-z', commit, '--', 'scripts', cwd=repository).split('\0'))
+    for metadata in history:
+        if not metadata.strip():
+            continue
+        old_mode, new_mode, old_blob, new_blob, _ = metadata.strip().removeprefix(':').split()
+        name = next(history)
+        known = versions.setdefault(name, set())
+        known.update((mode, blob) for mode, blob in ((old_mode, old_blob), (new_mode, new_blob))
+                     if mode in ('100644', '100755'))
+        if new_mode == '000000':
+            known.add(('000000', new_blob))
+    return versions
+
+
+def copied_scripts(repository, commit):
+    """Validate managed scripts against verified official main history.
+
+    A merge base can predate later official copies imported without a merge.
+    Match each path's exact blob AND mode, including older official versions.
+    Paths never owned by the maker remain application helpers, untouched.
+    """
+    versions = script_history(repository, commit)
+    helpers = []
+    present = set()
+    for entry in git('ls-tree', '-rz', '--full-tree', 'HEAD', '--', 'scripts').split('\0'):
+        if not entry:
+            continue
+        metadata, name = entry.split('\t', 1)
+        mode, _, blob = metadata.split()
+        present.add(name)
+        if name not in versions:
+            helpers.append(name)
+        elif (mode, blob) not in versions[name]:
+            raise ValueError(f'{name}: customized copied tooling; setup stopped before prerequisites. '
+                             'Its blob/mode matches no version of this path in official maker main history. '
+                             f'Inspect git log -p -- {name}; port this managed-tooling change deliberately '
+                             'to application configuration or upstream maker, then retry ./bilibi setup; '
+                             'no application files changed.')
+    # Missing newer files are normal in an older copy. An application deletion
+    # of a previously present managed path needs an official deletion precedent.
+    application_history = script_history(ROOT, 'HEAD')
+    for name in sorted(versions.keys() - present):
+        if name in application_history and not any(mode == '000000' for mode, _ in versions[name]):
+            raise ValueError(f'{name}: deleted copied tooling; setup stopped before prerequisites. '
+                             'This path existed in application history but was never deleted in official maker main. '
+                             f'Inspect git log -p -- {name}; port this managed-tooling removal deliberately '
+                             'before retrying ./bilibi setup; no application files changed.')
+    return helpers
+
+
 def adopt(state):
-    if CONFIG.exists():
-        raise ValueError('Already adopted; use ./bilibi update.')
     # Only the deliberately replaced bootstrap may be dirty at this boundary.
     changed = git('status', '--porcelain=v1', '--untracked-files=all', '-z')
     if any(entry[3:] != 'bilibi' for entry in changed.split('\0') if entry):
-        raise ValueError('Adoption requires a clean application except for the reviewed bilibi bootstrap. Commit or stash local work yourself, then retry ./bilibi adopt.')
+        raise ValueError('First setup requires a clean application except for the reviewed bilibi bootstrap. Commit or stash local work yourself, then retry ./bilibi setup.')
     repository = cache(state)
     commit = fetch_main(repository)
     _, checksum = install(state, repository, commit)
-    # Find the historical official copy so older unmodified scripts can migrate.
-    # The fetched objects are separate; import them without changing any app ref.
-    git('-c', 'core.hooksPath=/dev/null', 'fetch', '--quiet', '--no-tags', str(repository), commit)
-    base = subprocess.run(['git', '-C', str(ROOT), 'merge-base', 'HEAD', commit],
-                          text=True, capture_output=True).stdout.strip() or commit
-    customized = git('diff', '--name-only', '--no-ext-diff', '--no-renames', base, 'HEAD', '--', 'scripts').splitlines()
-    if customized:
-        raise ValueError(f'{customized[0]}: customized copied tooling; adoption stopped. Port this customization deliberately to application configuration or upstream maker before adoption; no application files changed.')
+    helpers = copied_scripts(repository, commit)
     atomic(CONFIG, f'format = 1\nrepository = "{OFFICIAL}"\nstream = "main"\n'.encode())
     atomic(LOCK, record(commit, checksum))
-    print(f'Maker commit {commit}; tooling sha256 {checksum}')
-    print('Adopted shared maker tooling. Review and commit bilibi, maker.toml and maker.lock, then push through your usual review. Copied scripts remain intact but are no longer used by ./bilibi.')
+    print(f'Maker commit {commit}; tooling sha256 {checksum}', flush=True)
+    print('First setup adopted shared maker tooling: created maker.toml and maker.lock. '
+          'Review and commit bilibi, maker.toml and maker.lock, then push through your usual review. '
+          'Copied scripts and application workflows remain intact; ./bilibi now uses maker.lock.', flush=True)
+    for name in helpers:
+        print(f'Retained application helper: {name}. Existing direct callers still use this file.', flush=True)
+    print('Preparing prerequisites with the recorded maker. Rerun ./bilibi setup to retry; '
+          'only ./bilibi update selects a newer maker.', flush=True)
 
 
 def run(folder, command):
@@ -365,14 +415,18 @@ def main():
     command = sys.argv[1:]
     if (Path.home() / '.cargo/env').is_file():
         os.environ['PATH'] = str(Path.home() / '.cargo/bin') + os.pathsep + os.environ.get('PATH', '')
-    if not CONFIG.exists() and not CONFIG.is_symlink() and command == ['tooling']:
+    shared = CONFIG.exists() or CONFIG.is_symlink() or LOCK.exists() or LOCK.is_symlink()
+    if not shared and command == ['tooling']:
         print(ROOT)
         return
-    if not CONFIG.exists() and not CONFIG.is_symlink() and command != ['adopt']:
-        # Maker development / a legacy workspace, until explicit adoption.
+    if not shared and command != ['setup']:
+        # A legacy workspace, until its first explicit setup.
         os.execv(sys.executable, [sys.executable, str(ROOT / 'scripts/workspace.py'), *command])
     hook = command == ['check-staged']
     try:
+        if command[:1] == ['upgrade']:
+            raise ValueError('This application has adopted shared maker tooling; use ./bilibi update. '
+                             './bilibi upgrade merges maker files and would undo the adoption.')
         trusted()
         location = Path(git('rev-parse', '--git-path', 'bilibi-maker'))
         state = location if location.is_absolute() else ROOT / location
@@ -381,9 +435,8 @@ def main():
         state.mkdir(parents=True, exist_ok=True, mode=0o700)
         with (state / 'lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            if command == ['adopt']:
+            if command == ['setup'] and not shared:
                 adopt(state)
-                return
             if command[:1] == ['update']:
                 # update holds the lock throughout, so no other command sees a half-moved record.
                 sys.exit(update(state, command[1:]))
