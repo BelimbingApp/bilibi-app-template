@@ -113,7 +113,7 @@ Check asks about each part with new commits. Say yes to use them and save the bu
 - [Running your application](docs/guides/running.md): requirements, workspace, commands and commit safeguards.
 - [Releasing your application](docs/guides/releasing.md): build, check and release your application.
 - [Installing a release](docs/guides/installing.md): put a tested release on Staging and Production.
-- [Private sources](docs/guides/private-sources.md): give checks access to private repositories.
+- [Private sources](docs/guides/private-sources.md): `./bilibi connect-private-sources` lets checks read your private Domains and Extensions.
 - [Taking maker updates](docs/guides/maker-updates.md): `./bilibi update` for adopted applications (`maker.lock`, going back, one-time adoption, recovery) and `./bilibi upgrade` for merging maker files and moving the Platform.
 - [Application repositories](docs/guides/about.md): where changes belong and what the maker provides.
 
