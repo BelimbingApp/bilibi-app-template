@@ -426,6 +426,80 @@ def upgrade():
     upgrade_request(repository, default, branch)
 
 
+REPOSITORY_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+')
+
+
+def is_maker(url):
+    match = GITHUB_ORIGIN.fullmatch(url)
+    return bool(match) and match[1].lower() == 'belimbingproject/bilibi-app-maker'
+
+
+def own_step(*args):
+    print(f'  $ {shlex.join(args)}', flush=True)
+    run(*args)
+
+
+def own(repository):
+    """Turn a clone of the maker into the owner's own repository, linked to the maker for updates."""
+    if not REPOSITORY_NAME.fullmatch(repository) or repository.endswith('.git'):
+        raise ValueError(f'{repository}: give your repository as <owner>/<name>, such as your-company/my-bilibi')
+    if is_maker(f'https://github.com/{repository}'):
+        raise ValueError(f'{repository} is the maker itself; give a repository of your own, such as your-company/my-bilibi')
+    url = f'https://github.com/{repository}.git'
+    origin, upstream = remote_url('origin'), remote_url('upstream')
+    target = GITHUB_ORIGIN.fullmatch(origin)
+    # A rerun after a failed step finds origin already connected and finishes the rest.
+    connected = bool(target) and target[1].lower() == repository.lower() and is_maker(upstream)
+    if not connected and not (is_maker(origin) and not upstream):
+        if origin and not is_maker(origin):
+            raise ValueError(f'{ROOT}: origin is already {origin}, not the maker, so this copy is already connected to a '
+                             f'repository; nothing was changed. Inspect with {git_step(ROOT, "remote", "-v")}. To move it to '
+                             f'{repository} instead, run {git_step(ROOT, "remote", "set-url", "origin", url)}, '
+                             f'gh repo set-default {repository} and {git_step(ROOT, "push", "-u", "origin", "main")}')
+        raise ValueError(f'{ROOT}: own starts from a fresh clone, where origin is the maker and there is no upstream '
+                         f'remote; nothing was changed. Inspect with {git_step(ROOT, "remote", "-v")}, and see '
+                         '"Start here" in README.md to connect your repository by hand')
+    if subprocess.run(['git', 'rev-parse', '--verify', '--quiet', 'refs/heads/main'], cwd=ROOT,
+                      stdout=subprocess.DEVNULL, check=False).returncode:
+        raise ValueError(f'{ROOT}: there is no main branch to push; nothing was changed. Run '
+                         f'{git_step(ROOT, "switch", "main")} and rerun ./bilibi own {repository}')
+    if not shutil.which('gh'):
+        raise ValueError(f'Install the GitHub CLI (gh) and sign in with gh auth login, then rerun ./bilibi own {repository}.')
+    found = subprocess.run(['gh', 'repo', 'view', repository, '--json', 'isEmpty,visibility'], cwd=ROOT,
+                           text=True, capture_output=True, check=False)
+    if found.returncode and 'Could not resolve to a Repository' not in found.stderr:
+        raise ValueError(f'gh could not look up {repository}: {found.stderr.strip()}\nNothing was changed. '
+                         f'Check that gh is signed in with gh auth status, then rerun ./bilibi own {repository}.')
+    details = None if found.returncode else json.loads(found.stdout)
+    if details and not details['isEmpty'] and not connected:
+        raise ValueError(f'{repository} already has commits on GitHub, and own only fills an empty repository, so '
+                         'nothing there is overwritten; nothing was changed. Choose a new name, such as '
+                         f'{repository}-app, and rerun ./bilibi own')
+
+    print(f'Step 1 of 3: your repository {repository} on GitHub')
+    if details is None:
+        own_step('gh', 'repo', 'create', repository, '--private')
+    else:
+        print(f'  {repository} already exists ({details["visibility"].lower()}, '
+              f'{"empty" if details["isEmpty"] else "has commits"}), so own uses it.')
+    print('Step 2 of 3: point origin at your repository and keep the maker as upstream')
+    if connected:
+        print(f'  origin is already {origin}, and upstream is the maker.')
+    else:
+        own_step('git', 'remote', 'rename', 'origin', 'upstream')
+        if remote_url('upstream') != MAKER:
+            # ./bilibi upgrade and update accept only this exact maker address.
+            own_step('git', 'remote', 'set-url', 'upstream', MAKER)
+        own_step('git', 'remote', 'add', 'origin', url)
+    # Without a default, gh would open later pull requests against the maker.
+    own_step('gh', 'repo', 'set-default', repository)
+    print('Step 3 of 3: push main to your repository')
+    own_step('git', 'push', '--set-upstream', 'origin', 'main')
+    print(f'This copy is now yours. origin is {url}, where you push; upstream is the maker, where later '
+          'improvements come from. Next, run ./bilibi adopt to take maker updates with ./bilibi update; '
+          'see "Start here" in README.md.')
+
+
 def start():
     setup()
     status()
@@ -737,8 +811,8 @@ def check_staged():
 
 def main():
     parser = argparse.ArgumentParser(prog='./bilibi', description=__doc__)
-    parser.add_argument('command', nargs='?', choices=('help', 'start', 'update', 'upgrade', 'add', 'status', 'setup', 'check', 'release', 'check-staged'),
-                        metavar='{help,start,update,upgrade,add,status,setup,check,release}')
+    parser.add_argument('command', nargs='?', choices=('help', 'start', 'update', 'upgrade', 'own', 'add', 'status', 'setup', 'check', 'release', 'check-staged'),
+                        metavar='{help,start,update,upgrade,own,add,status,setup,check,release}')
     parser.add_argument('component', nargs='?')
     parser.add_argument('--kind', choices=('domains', 'extensions'), help='add: component mount kind; give with --source and --commit')
     parser.add_argument('--source', help='add: official BelimbingProject repository URL from Software')
@@ -755,8 +829,11 @@ def main():
         parser.error('--kind, --source and --commit are only for ./bilibi add')
     if any(supplied) and not all(supplied):
         raise ValueError('--kind, --source and --commit go together; give all three or none')
-    if (args.command == 'add') != (args.component is not None):
-        parser.error('Use ./bilibi add <component> [--kind domains|extensions --source <url> --commit <sha>]; other commands take no arguments')
+    if args.command == 'own' and args.component is None:
+        parser.error('Use ./bilibi own <owner>/<name>, such as ./bilibi own your-company/my-bilibi')
+    if args.command not in ('add', 'own') and args.component is not None or args.command == 'add' and args.component is None:
+        parser.error('Use ./bilibi add <component> [--kind domains|extensions --source <url> --commit <sha>] or '
+                     './bilibi own <owner>/<name>; other commands take no arguments')
     if args.command in (None, 'help'):
         print('This is a Bilibi application: your own product, built on Bilibi.\n'
               'To change Bilibi itself, work in https://github.com/BelimbingProject/bilibi instead.\n\n'
@@ -769,6 +846,11 @@ def main():
               '                Then run ./bilibi start again to use it.\n'
               '  status        List the Platform, Domains and Extensions, with their branches,\n'
               '                your uncommitted changes, and any difference from the saved versions.\n\n'
+              'Make it yours\n'
+              '  own <owner>/<name>\n'
+              '                Once, in a fresh clone: create your private GitHub repository\n'
+              '                (or use an empty one), make it origin, keep the maker as\n'
+              '                upstream, and push main.\n\n'
               'Work with your team\n'
               '  update        Get your team\'s changes and saved source versions. After\n'
               '                one-time adoption it first moves maker.lock to the newest\n'
@@ -804,6 +886,8 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX)
         if args.command == 'add':
             add(args.component, args.kind, args.source, args.commit)
+        elif args.command == 'own':
+            own(args.component)
         elif args.command == 'check':
             check(args.yes)
         elif args.command == 'release':
