@@ -102,11 +102,10 @@ Your folder now has two remotes. `origin` is your application, where you push. `
 
 ```sh
 ./bilibi check
-./bilibi release --tag setup-v1.0.0
+./bilibi release
 ```
 
-Check asks about each part with new commits. Say yes to use them and save the build record only after all checks pass, or no to build its saved version. Commit the successful build record and merge it into your application's default branch. Release then creates the protected tag and starts the GitHub release build. GitHub uses exactly those reviewed versions.
-To install it on a server, follow [Release your setup](docs/guides/releasing.md#release-your-setup) and [Install a release](docs/guides/installing.md#install-a-release).
+Check asks about each part with new commits. Say yes to use them and save the build record only after all checks pass, or no to build its saved version. Commit the successful build record and merge it into your application's default branch. Release then suggests the next version, pushes its tag, waits for GitHub to build exactly those reviewed versions, publishes the release, and prints the file to upload on each server's Software page. [Release your setup](docs/guides/releasing.md#release-your-setup) and [Install a release](docs/guides/installing.md#install-a-release) explain each step.
 
 ## Guides
 

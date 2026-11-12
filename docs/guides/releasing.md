@@ -40,36 +40,62 @@ export BILIBI_CHECK_DATABASE_URL=postgresql://YOUR-USER@127.0.0.1:5432/EMPTY-DIS
 
 ## Release your setup
 
-**Build in development or GitHub Actions; servers install the finished release.** Before releasing, enable **release immutability** in your application repository's Settings. Protect `main` and the `setup-v*` tags so only release maintainers can change them, and allow GitHub Actions to run.
+**Build in development or GitHub Actions; servers install the finished release.**
 
-After check succeeds, commit `setup.toml`, `composition/manifest.txt` and `composition/Cargo.lock` (an adopted application also has `maker.lock` committed, which check covers but never changes), review that commit, and merge it into the application's default branch. Then start a release with a new application version:
+### Before your first release
+
+Do these once, in your application repository's Settings on GitHub:
+
+- Enable **release immutability**, so a published release can never be changed.
+- Protect `main` and the `setup-v*` tags so only release maintainers can change them.
+- Allow GitHub Actions to run.
+
+On your computer, sign in to GitHub with `gh auth login`, using an account that can publish releases and read the repository's settings. Release also needs Node.js 20 or newer with npm; `./bilibi setup` prepares it.
+
+### Release
+
+After check succeeds, commit `setup.toml`, `composition/manifest.txt` and `composition/Cargo.lock` (an adopted application also has `maker.lock` committed, which check covers but never changes). Review that commit and merge it into the application's default branch. Then run one command from the default branch:
 
 ```sh
-./bilibi release --tag setup-v1.0.0
+./bilibi release
 ```
 
-`./bilibi release` refuses any uncommitted file, a commit outside the remote default branch, or a record that differs from the last successful check. It tags that reviewed record and pushes the tag to `origin`, starting **Release setup**. Release never selects or commits source versions.
+Release walks you through every step and prints what it is doing:
 
-The setup version belongs to your repository. It is separate from the Platform and Domain versions. **Never move a published tag or replace a published asset.**
+1. **Checks your checkout.** It refuses any uncommitted file, a commit that is not on the remote default branch, a record that differs from your last successful `./bilibi check`, and a default branch whose last **Check setup** run on GitHub did not pass.
+2. **Suggests the next version.** For example, after `setup-v1.2.3` it offers `setup-v1.2.4`; the first release is `setup-v1.0.0`. Press Enter to accept it, type another version such as `setup-v1.3.0`, or type `no` to stop without changing anything.
+3. **Pushes the tag** to `origin`. This starts the **Release setup** build on GitHub.
+4. **Waits for the build** and shows its link. The build takes a while. You can stop waiting with Ctrl+C; the build carries on, and `./bilibi release --tag setup-v1.2.4` continues from where you left off.
+5. **Publishes the release.** It downloads every asset into `.local/releases/setup-v1.2.4/`, checks each one against `SHA256SUMS` and GitHub's own digests, checks that the tag and recipe name this commit, and then publishes the draft with `scripts/publish.py`. GitHub must then report the release as immutable.
+6. **Tells you what to install.** It prints the exact archive to upload, its SHA-256, and the steps on each server's Software page. [Installing a release](installing.md) explains those steps.
+
+The printed instructions end like this:
+
+```text
+Install it on each server, Staging first, then Production:
+  1. On the server, open Software. Set GitHub repository to your-company/my-bilibi and accept it
+     (once per server; a private repository also needs its read token).
+  2. Open Software -> Releases and upload this file:
+       /home/you/my-bilibi/.local/releases/setup-v1.2.4/bilibi-setup-v1.2.4-x86_64-unknown-linux-gnu.tar.gz
+     SHA-256 ..., checked against SHA256SUMS and GitHub.
+  3. Review the versions it lists, then confirm the install with a fresh 2FA code.
+```
+
+**If the build fails,** release prints the link to the failed run and stops. If the fix needs no new commit, such as a missing secret, choose **Re-run all jobs** on that run, then run `./bilibi release --tag <the same version>` to continue. A fix that changes files needs a new commit, a new check and a new version.
+
+**In a script,** name the version and confirm it up front: `./bilibi release --tag setup-v1.2.4 --yes`. Without a terminal, release refuses to guess.
+
+The setup version belongs to your repository. It is separate from the Platform and Domain versions. Release never selects or commits source versions, and **never moves a published tag or replaces a published asset.**
+
+A `setup-vX.Y.Z-test` version runs the same build and checks, but stays a draft. Release prints how to delete the draft and its tag after testing.
+
+### What happens on GitHub
 
 **Release setup** runs only for a `setup-vX.Y.Z` tag whose commit is on the repository's default branch. It repeats the combined gates, checks the compiled program's reported composition, packages it, publishes SHA-256 checksums, creates GitHub build provenance for every asset, and creates a draft release through the `release` environment. Only the draft job has `contents: write`; only the attestation job can request an identity token and write attestations. It uploads every asset and compares each digest with GitHub's recorded SHA-256. A rerun refuses an existing release instead of replacing its files.
 
-Final publication also needs an authenticated GitHub CLI session and Node.js 20 or newer on your machine. Install the locked `gh-axi` helper:
+Publishing is your own action, never the workflow's. This keeps an administration credential out of Actions: checking GitHub's immutability setting requires administration read permission, which `./bilibi release` uses through your own `gh auth login` session. It installs the locked `gh-axi` helper from `scripts/github-tools` under `.local/github-tools` the first time.
 
-```sh
-npm ci --prefix scripts/github-tools --ignore-scripts --no-audit --no-fund
-export PATH="$PWD/scripts/github-tools/node_modules/.bin:$PATH"
-```
-
-The owner publishes the verified draft as a separate final action. This keeps an administration credential out of Actions: checking GitHub's immutability setting requires administration read permission. Before publishing, confirm that every asset shows build provenance from this repository's `.github/workflows/release.yml`. Use your own authenticated `gh-axi` session, with that permission and permission to publish releases. In a clean checkout of the tagged commit, download all draft assets into an empty `dist/` folder:
-
-```sh
-git checkout setup-v1.0.0
-gh-axi release download setup-v1.0.0 --repo YOUR-ORGANISATION/YOUR-SETUP --dir dist
-python3 scripts/publish.py publish --tag setup-v1.0.0 --repository YOUR-ORGANISATION/YOUR-SETUP
-```
-
-The script checks the tagged commit, local checksums, GitHub asset digests and repository immutability before publishing. It then requires GitHub to report an immutable release. A `setup-vX.Y.Z-test` tag runs the same build but must stay a draft; delete the draft and tag after testing.
+Every server checks each asset's build provenance from this repository's `.github/workflows/release.yml` before it unpacks or installs it. To check it yourself, run `gh attestation verify <file> --repo your-company/my-bilibi` on a downloaded file. Downloads stay under `.local/releases/` until you delete them.
 
 ## What the release contains
 

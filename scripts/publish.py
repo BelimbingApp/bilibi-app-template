@@ -108,6 +108,7 @@ def require_default_branch(root):
     reviewed = subprocess.run(['git', 'merge-base', '--is-ancestor', 'HEAD', f'origin/{branch}'], cwd=root)
     if reviewed.returncode:
         raise ValueError(f'Release only a reviewed commit on the default branch ({branch}). Merge and push it first.')
+    return branch
 
 
 def start_release(tag, root):
@@ -117,8 +118,60 @@ def start_release(tag, root):
         subprocess.run(['git', 'tag', '-d', tag], cwd=root, check=True)
         raise ValueError(f'{tag} was not published to origin. Check your connection and Git access, '
                          'then run the release command again.')
-    print(f'Started the GitHub release build for {tag}. Follow Release setup in GitHub Actions. '
-          'Publish the verified draft using docs/guides/releasing.md.')
+    print(f'Pushed {tag} to origin. GitHub now builds it with the Release setup workflow.', flush=True)
+
+
+def release_assets(tag, target):
+    return {f'bilibi-{tag}-{target}.tar.gz', f'bilibi-installer-{target}', 'bilibi-server-tools.tar.gz',
+            'recipe.json', 'builder-packages.txt', 'publication.json', 'SHA256SUMS'}
+
+
+def verify_download(folder, tag, repository, root=ROOT):
+    """Check downloaded release files against SHA256SUMS, the recipe, the checkout and the remote tag."""
+    expected = verify_files(folder)
+    record = json.loads((folder / 'recipe.json').read_text())
+    setup = record['setup']
+    commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
+    tag_commit = subprocess.check_output(['git', 'rev-list', '-1', tag], cwd=root, text=True).strip()
+    if any(setup.get(key) != value for key, value in
+           {'repository': repository, 'tag': tag, 'commit': commit}.items()) or tag_commit != commit:
+        raise ValueError('Release recipe, checkout and tag must identify the same setup commit')
+    if api(f'/repos/{repository}/commits/{tag}')['sha'] != commit:
+        raise ValueError('The remote tag names a different recipe commit')
+    if set(expected) != release_assets(tag, record['built_for']['target']):
+        raise ValueError('The release does not contain the complete asset set')
+    return expected, record, commit
+
+
+def release(command, tag, repository, folder=None, root=ROOT):
+    """draft creates the verified draft; publish makes the verified draft final and immutable."""
+    folder = folder or root / 'dist'
+    validate_tag(tag)
+    expected, _, commit = verify_download(folder, tag, repository, root)
+    if command == 'draft':
+        # No --clobber and no reuse: a rerun must not replace an existing asset.
+        print(gh('release', 'create', tag, '--repo', repository, '--verify-tag', '--draft',
+                 '--title', tag, '--notes',
+                 f'Built from {commit}. Verify SHA256SUMS and recipe.json. Install the bilibi-setup archive through Software upload. '
+                 'The installer and server tools are separate bootstrap assets. Checksums are not signatures.',
+                 *map(str, sorted(folder.iterdir()))))
+    found = find_release(repository, tag)
+    if not found['draft']:
+        raise ValueError('This release is already published; never replace its tag or assets')
+    verify_assets(found, expected)
+    if command == 'publish':
+        if tag.endswith('-test'):
+            raise ValueError('Test releases stay drafts so their tag and release can be deleted')
+        # This runs with the owner's gh-axi session, never a build/publish secret.
+        if not api(f'/repos/{repository}/immutable-releases')['enabled']:
+            raise ValueError('Enable release immutability in repository Settings before publishing')
+        print(gh('release', 'edit', tag, '--repo', repository, '--draft=false'))
+        published = find_release(repository, tag)
+        if published['draft'] or not published.get('immutable'):
+            raise ValueError('GitHub did not report an immutable published release')
+        verify_assets(published, expected)
+    print(f'Verified {len(expected)} asset digests for {found["html_url"]}')
+    return expected
 
 
 def main():
@@ -129,47 +182,7 @@ def main():
     args = parser.parse_args()
     if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', args.repository):
         parser.error('Use owner/name for the repository')
-    validate_tag(args.tag)
-    expected = verify_files(ROOT / 'dist')
-    record = json.loads((ROOT / 'dist/recipe.json').read_text())
-    setup = record['setup']
-    commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
-    tag_commit = subprocess.check_output(['git', 'rev-list', '-1', args.tag], cwd=ROOT, text=True).strip()
-    if any(setup.get(key) != value for key, value in
-           {'repository': args.repository, 'tag': args.tag, 'commit': commit}.items()) or tag_commit != commit:
-        raise ValueError('Release recipe, checkout and tag must identify the same setup commit')
-    if api(f'/repos/{args.repository}/commits/{args.tag}')['sha'] != commit:
-        raise ValueError('The remote tag names a different recipe commit')
-    target = record['built_for']['target']
-    names = {f'bilibi-{args.tag}-{target}.tar.gz', f'bilibi-installer-{target}',
-             'bilibi-server-tools.tar.gz', 'recipe.json', 'builder-packages.txt',
-             'publication.json', 'SHA256SUMS'}
-    if set(expected) != names:
-        raise ValueError('The release does not contain the complete asset set')
-    if args.command == 'draft':
-        # No --clobber and no reuse: a rerun must not replace an existing asset.
-        print(gh('release', 'create', args.tag, '--repo', args.repository, '--verify-tag', '--draft',
-                 '--title', args.tag, '--notes',
-                 f'Built from {commit}. Verify SHA256SUMS and recipe.json. Install the bilibi-setup archive through Software upload. '
-                 'The installer and server tools are separate bootstrap assets. Checksums are not signatures.',
-                 *map(str, sorted((ROOT / 'dist').iterdir()))))
-    release = find_release(args.repository, args.tag)
-    if not release['draft']:
-        raise ValueError('This release is already published; never replace its tag or assets')
-    verify_assets(release, expected)
-    if args.command == 'publish':
-        if args.tag.endswith('-test'):
-            raise ValueError('Test releases stay drafts so their tag and release can be deleted')
-        # This runs with the owner's gh-axi session, never a build/publish secret.
-        if not api(f'/repos/{args.repository}/immutable-releases')['enabled']:
-            raise ValueError('Enable release immutability in repository Settings before publishing')
-        print(gh('release', 'edit', args.tag, '--repo', args.repository, '--draft=false'))
-        published = find_release(args.repository, args.tag)
-        if published['draft'] or not published.get('immutable'):
-            raise ValueError('GitHub did not report an immutable published release')
-        verify_assets(published, expected)
-    print(f'Verified {len(expected)} asset digests for {release["html_url"]}')
-
+    release(args.command, args.tag, args.repository)
 
 if __name__ == '__main__':
     main()
