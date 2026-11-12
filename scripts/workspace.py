@@ -22,6 +22,7 @@ import choose as guide
 import github_release
 import native_builder
 import platform_upgrade
+import private_sources
 import recipe
 import publish
 
@@ -322,6 +323,21 @@ def remote_url(name):
                           stderr=subprocess.DEVNULL, check=False).stdout.strip()
 
 
+def application_repository(command):
+    """The owner/name of this application's own repository on GitHub, from origin."""
+    origin = GITHUB_ORIGIN.fullmatch(remote_url('origin'))
+    if not origin or origin[1].lower() == 'belimbingproject/bilibi-app-maker':
+        raise ValueError(f'{ROOT}: origin must be your own application repository on GitHub; see "Start here" in '
+                         f'README.md to connect it, then rerun ./bilibi {command}')
+    return origin[1]
+
+
+def connect_private_sources():
+    if ci_build():
+        raise ValueError('./bilibi connect-private-sources runs on your computer: it opens GitHub in your browser.')
+    private_sources.connect(application_repository('connect-private-sources'))
+
+
 def pin(moved):
     """The three record files for moved versions, prepared in a candidate as ./bilibi check does, without a build.
 
@@ -414,13 +430,9 @@ def upgrade():
         raise ValueError(f'{ROOT}: the upstream remote must be exactly {MAKER}; inspect with '
                          f'{git_step(ROOT, "remote", "-v")}, then run {git_step(ROOT, "remote", action, "upstream", MAKER)} '
                          'and rerun ./bilibi upgrade')
-    origin = GITHUB_ORIGIN.fullmatch(remote_url('origin'))
-    if not origin or origin[1].lower() == 'belimbingproject/bilibi-app-maker':
-        raise ValueError(f'{ROOT}: origin must be your own application repository on GitHub; see "Start here" in '
-                         'README.md to connect it, then rerun ./bilibi upgrade')
+    repository = application_repository('upgrade')
     if not shutil.which('gh'):
         raise ValueError('Install the GitHub CLI (gh) and sign in with gh auth login, then rerun ./bilibi upgrade.')
-    repository = origin[1]
     try:
         listing = run('git', 'ls-remote', '--symref', 'origin', 'HEAD', capture=True).splitlines()
     except subprocess.CalledProcessError as error:
@@ -918,8 +930,9 @@ def check_staged():
 
 def main():
     parser = argparse.ArgumentParser(prog='./bilibi', description=__doc__)
-    parser.add_argument('command', nargs='?', choices=('help', 'start', 'choose', 'update', 'upgrade', 'own', 'add', 'status', 'setup', 'check', 'release', 'check-staged'),
-                        metavar='{help,start,choose,update,upgrade,own,add,status,setup,check,release}')
+    parser.add_argument('command', nargs='?', choices=('help', 'start', 'choose', 'update', 'upgrade', 'own', 'add', 'status', 'setup', 'check', 'release',
+                                                       'connect-private-sources', 'check-staged'),
+                        metavar='{help,start,choose,update,upgrade,own,add,status,setup,check,release,connect-private-sources}')
     parser.add_argument('component', nargs='?')
     parser.add_argument('--kind', choices=('domains', 'extensions'), help='add: component mount kind; give with --source and --commit')
     parser.add_argument('--source', help='add: official BelimbingProject repository URL from Software')
@@ -976,7 +989,11 @@ def main():
               '  release       After committing and reviewing the checked record: suggest\n'
               '                the next version, push its tag, wait for the GitHub build,\n'
               '                publish it and download the file to upload on Software.\n'
-              '                For scripts, use release --tag setup-vX.Y.Z --yes.\n\n'
+              '                For scripts, use release --tag setup-vX.Y.Z --yes.\n'
+              '  connect-private-sources\n'
+              '                Let GitHub checks read private Domains and Extensions: creates\n'
+              '                a read-only GitHub App and stores it in this repository.\n'
+              '                docs/guides/private-sources.md explains each step.\n\n'
               'Stay current with the maker\n'
               '  upgrade       Move the Platform and official Domains and Extensions to the newest\n'
               '                recommended release, show its upgrade notes and, without maker.lock,\n'
@@ -992,6 +1009,9 @@ def main():
         return
     if args.command == 'check-staged':
         check_staged()
+        return
+    if args.command == 'connect-private-sources':
+        connect_private_sources()
         return
     local = ROOT / '.local'
     local.mkdir(exist_ok=True)

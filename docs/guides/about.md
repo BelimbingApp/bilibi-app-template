@@ -28,12 +28,10 @@ If you started in `bilibi` instead, `./bilibi new <name>` there turns what you b
 
 ## What the maker will do
 
-Today the maker gives you a running Bilibi, a list to choose its business features from (`./bilibi choose`, also offered on the first start), and the commands to build, check and release it. Some steps are still manual, such as making the clone your own or connecting private Domains. The maker will take these over, one command each:
+Today the maker gives you a running Bilibi, a list to choose its business features from (`./bilibi choose`, also offered on the first start), and the commands to build, check and release it. Making the clone yours takes one command, `./bilibi own <owner/name>` (see [Start here](../../README.md#start-here)), and connecting private Domains and Extensions takes another, `./bilibi connect-private-sources` (see [Private sources](private-sources.md)). The maker will take over the remaining manual steps, one command each:
 
 | Step | Today | Planned |
 | --- | --- | --- |
-| Make it yours | Four Git commands, in [Start here](../../README.md#start-here) | `./bilibi own <owner/name>` ([#12](https://github.com/BelimbingProject/bilibi-app-maker/issues/12)) |
-| Use private Domains | Set up a GitHub App by hand, in [Private sources](private-sources.md#private-sources) | One command ([#13](https://github.com/BelimbingProject/bilibi-app-maker/issues/13)) |
 | Release and install | `./bilibi release` suggests the version, pushes the tag, waits for the build, publishes it and tells you what to upload on the Software page | Nothing more planned |
 | Stay current | `./bilibi update` moves `maker.lock` to the newest maker, then updates the application and saved source versions; you publish `maker.lock` in a pull request. `./bilibi upgrade` merges maker files into an application that has not adopted shared tooling, and moves the Platform with its official Domains and Extensions to the newest recommended release, showing the upgrade notes for agents, in one pull request | Nothing more planned |
 

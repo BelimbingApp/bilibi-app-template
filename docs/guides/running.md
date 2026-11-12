@@ -65,6 +65,7 @@ Run commands from the application's root folder. `./bilibi help` shows the same 
 | `./bilibi upgrade` | Merges the maker's files (applications without `maker.lock`), moves the Platform and the official Domains and Extensions to the newest recommended release, and opens one pull request with the upgrade notes for agents | When the maker or the Platform has a new release; see [Take maker updates](maker-updates.md#staying-current-with-upgrade) |
 | `./bilibi check` | Asks about new commits, builds and tests against an empty test database, then saves your choices if it passes. | Before a release |
 | `./bilibi release` | Suggests the next version, pushes its tag, waits for the GitHub build, publishes the release, downloads and checks the archive, and prints what to upload on the Software page. Refuses uncommitted files, a record without a successful check, a copy behind the default branch, or a default branch whose check for this commit has not passed. | After check passes and the record is merged |
+| `./bilibi connect-private-sources` | Creates a GitHub App that can only read the private Domains and Extensions in `setup.toml`, stores it in your application repository, and opens its install page | Once, when your application first uses a private source; see [Private sources](private-sources.md) |
 | `./bilibi setup` | Installs the tools and fetches the sources, without starting | When you want everything ready in advance |
 | `./bilibi help` | Shows the command list | Any time |
 
