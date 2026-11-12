@@ -49,6 +49,8 @@ If you already know the name, add it directly and start again:
 
 The **Software** page in Bilibi lists the same Domains and Extensions, and shows the exact `add` command for each one.
 
+You can also let Claude or Codex run these commands for you. The assistant shows what each command will do, and you confirm before anything changes: see [Working with an AI assistant](docs/guides/ai-assistants.md).
+
 3. Make it yours. Your application gets its own private repository on GitHub, for example `your-company/my-bilibi`. Before you push, choose your application's licence. A private application usually starts with `Copyright (c) <year> <owner>. All rights reserved.` in its root `LICENSE`; an open-source application should use a licence you choose. The maker's MIT licence is not your application's licence, so keep it separately. If your copy still has a root `LICENSE` (you cloned the maker directly), move it with:
 
 ```sh
@@ -114,6 +116,7 @@ Check asks about each part with new commits. Say yes to use them and save the bu
 - [Running your application](docs/guides/running.md): requirements, workspace, commands and commit safeguards.
 - [Releasing your application](docs/guides/releasing.md): build, check and release your application.
 - [Installing a release](docs/guides/installing.md): put a tested release on Staging and Production.
+- [Working with an AI assistant](docs/guides/ai-assistants.md): `./bilibi mcp` lets Claude or Codex run your application's commands on your computer, with a preview and your confirmation before each change. It is separate from the `/mcp` inside a running Bilibi, which does business work.
 - [Private sources](docs/guides/private-sources.md): `./bilibi connect-private-sources` lets checks read your private Domains and Extensions.
 - [Taking maker updates](docs/guides/maker-updates.md): `./bilibi update` for adopted applications (`maker.lock`, going back, one-time adoption, recovery) and `./bilibi upgrade` for merging maker files and moving the Platform.
 - [Application repositories](docs/guides/about.md): where changes belong and what the maker provides.

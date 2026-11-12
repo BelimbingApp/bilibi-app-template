@@ -131,7 +131,8 @@ class AddTest(unittest.TestCase):
             (('--kind', 'domains'), 'go together; give all three or none'),
             (('--source', self.source, '--commit', self.first), 'go together; give all three or none'),
             (('--kind', 'domains', '--source', self.source, '--commit', 'main'), 'full 40-character lowercase commit ID'),
-            (('--kind', 'domains', '--source', 'https://github.com/other/finance', '--commit', self.first), 'not an official BelimbingProject repository'),
+            (('--kind', 'domains', '--source', 'https://user:token@github.com/other/finance', '--commit', self.first), 'without a user name, password, token'),
+            (('--kind', 'domains', '--source', 'ssh://git@github.com/other/finance', '--commit', self.first), 'must be an HTTPS Git URL'),
         ]:
             with self.subTest(args=args):
                 self.assertIn(message, self.add(*args, ok=False))

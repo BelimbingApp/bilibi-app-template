@@ -24,6 +24,8 @@ Notice also what did **not** happen: no token or key was printed, saved in a fil
 
 You may already have questions: what a GitHub App is, why we ask about pull requests, and what to do if your sources are not on GitHub. We cover each of these below.
 
+This guide is about the checks on GitHub. To add a private Domain or Extension to your application in the first place, use `./bilibi add <id> --kind … --source … --commit …` and then `./bilibi pin`; see [Add your own private Extension](ai-assistants.md#add-your-own-private-extension).
+
 ## Before you start
 
 You need:

@@ -62,14 +62,22 @@ Run commands from the application's root folder. `./bilibi help` shows the same 
 | `./bilibi start` | Installs anything missing, fetches the sources, runs the application, and opens it in your browser | Every time you want to run your application |
 | `./bilibi own <owner>/<name>` | Creates your private GitHub repository (or uses an empty one), makes it `origin`, keeps the maker as `upstream`, sets the `gh` default and pushes `main` | Once, in a fresh clone; see "Start here" in [README.md](../../README.md#start-here) |
 | `./bilibi choose` | Lists the official Domains and Extensions that are not added yet, with a line about each. Tick the ones you want, confirm, and it adds them and starts the application. | When you want business features but don't know their names. The first `start` offers it too. |
-| `./bilibi add <name>` | Adds a Domain or Extension, such as `finance`. You can also paste the `add` command that the Software page shows. | When you want a new business feature. Run `start` again afterwards. |
+| `./bilibi add <name>` | Adds a Domain or Extension, such as `finance`. You can also paste the `add` command that the Software page shows, or add your own private one with `--kind`, `--source` and `--commit`. | When you want a new business feature. Run `start` again afterwards. |
+| `./bilibi start --background` | Runs the application as a background job instead of in your terminal. It installs nothing; when a tool is missing it asks you to run `./bilibi setup`. A second start reports the run that already exists. | When you want your terminal back, or an AI assistant starts the application |
+| `./bilibi stop` | Shows which process it will stop, asks, then stops this copy and no other. Data is kept. `--yes` skips the question. | When you want to stop a run from another terminal |
+| `./bilibi logs [<job>]` | Shows the end of the output from the background run, or from one background job, with credentials removed | When a start or a check did not do what you expected |
+| `./bilibi jobs` | Lists the background jobs in this copy and how each one ended | After a long command, or after reconnecting an AI assistant |
+| `./bilibi insight` | Measures processor and memory use of the running application, disk use and database size, and lists recent errors. A figure it cannot measure says why. | When the application feels slow or the disk fills up |
 | `./bilibi status` | Lists the Platform, Domains and Extensions, with their branches, your uncommitted changes, and any difference from the saved versions | When you want to see what you have changed |
 | `./bilibi update` | Moves `maker.lock` to the newest maker (listing its commits), then gets your team's changes and restores the saved source versions. `--back` or `--to <commit>` returns to an earlier maker. | Before you start work, to match your team |
 | `./bilibi upgrade` | Merges the maker's files (applications without `maker.lock`), moves the Platform and the official Domains and Extensions to the newest recommended release, and opens one pull request with the upgrade notes for agents | When the maker or the Platform has a new release; see [Take maker updates](maker-updates.md#staying-current-with-upgrade) |
+| `./bilibi pin` | Asks about new commits, then saves your choices in `setup.toml` and `composition/` together, without building or testing | When you want an added Domain or Extension saved now and will check later |
 | `./bilibi check` | Asks about new commits, builds and tests against an empty test database, then saves your choices if it passes. | Before a release |
 | `./bilibi release` | Suggests the next version, pushes its tag, waits for the GitHub build, publishes the release, downloads and checks the archive, and prints what to upload on the Software page. Refuses uncommitted files, a record without a successful check, a copy behind the default branch, or a default branch whose check for this commit has not passed. | After check passes and the record is merged |
 | `./bilibi connect-private-sources` | Creates a GitHub App that can only read the private Domains and Extensions in `setup.toml`, stores it in your application repository, and opens its install page | Once, when your application first uses a private source; see [Private sources](private-sources.md) |
 | `./bilibi setup` | Transitions copied tooling once, then prepares sources and prerequisites with `maker.lock`; no build, start or database migration | First preparation and safe reruns |
+| `./bilibi <command> --preview` | Says what `start`, `stop`, `add`, `update`, `pin`, `check`, `release` or `upgrade` would do, and changes nothing | Before a command you are unsure about |
+| `./bilibi mcp` | Serves these commands to Claude or Codex on this computer | Your AI app starts it; see [Working with an AI assistant](ai-assistants.md) |
 | `./bilibi help` | Shows the command list | Any time |
 
 `./bilibi new` belongs to the Platform repository. In an application repository, you already own the application recipe.
@@ -100,7 +108,7 @@ Copy the install command from **Administration › System › Software** and run
 ./bilibi add finance --kind domains --source https://github.com/BelimbingProject/bilibi-dom-finance --commit <recommended-commit>
 ```
 
-Give all three flags together. The commit must be a full lowercase 40-character ID. Finance mounts at `sources/platform/apps/domains/finance`; Extensions mount at `sources/platform/apps/extensions/<id>`. Without these flags, `add` uses the local Platform catalogue and the repository's default branch, as before.
+Give all three flags together. The commit must be a full lowercase 40-character ID. The source can also be your own private repository: give its HTTPS address without a user name or token, and `add` reads it with the Git sign-in your computer already has. A private part is mounted but not saved for release until you run `./bilibi pin` or `./bilibi check`; [Working with an AI assistant](ai-assistants.md#add-your-own-private-extension) walks through it. Finance mounts at `sources/platform/apps/domains/finance`; Extensions mount at `sources/platform/apps/extensions/<id>`. Without these flags, `add` uses the local Platform catalogue and the repository's default branch, as before.
 
 An existing checkout at the requested commit keeps its branch and edits. If it is at another commit, `add` refuses and prints the requested commit and fetch/checkout steps. Save your work before following those steps. A different origin, occupied path or mismatched component descriptor also causes a refusal. If a new clone lacks the requested commit, it stays available for inspection and the message explains how to retry. Run `./bilibi start` to try the component, then commit and push your component work before `./bilibi check` saves your choice.
 
@@ -118,4 +126,4 @@ After [one-time shared-tooling adoption](maker-updates.md#first-setup-and-migrat
 
 ## Where to go next
 
-[Settings](settings.md) explains addresses and databases. [Releasing your application](releasing.md) covers saving versions and publishing.
+[Settings](settings.md) explains addresses and databases. [Working with an AI assistant](ai-assistants.md) lets Claude or Codex run these commands for you. [Releasing your application](releasing.md) covers saving versions and publishing.
