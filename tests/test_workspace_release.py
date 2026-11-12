@@ -174,6 +174,12 @@ class ReleaseTest(BuildFixture):
                 self.assertIn('https://github.com/acme/shop/actions/runs/check/2', output)
                 self.assertEqual(self.remote_tags(), '')
 
+    def test_refuses_when_the_newest_check_is_for_an_older_commit(self):
+        self.github(checks=[{**self.run_state('completed', 'success', 'check/3'), 'head_sha': 'a' * 40}])
+        output = self.command('release', '--tag', 'setup-v1.0.0', '--yes', ok=False)
+        self.assertIn('has not run on the newest main commit yet', output)
+        self.assertEqual(self.remote_tags(), '')
+
     def test_failed_build_explains_the_rerun_and_the_same_command_continues(self):
         self.built_release('setup-v1.0.0')
         self.github(builds=[[self.run_state('completed', 'failure')]])

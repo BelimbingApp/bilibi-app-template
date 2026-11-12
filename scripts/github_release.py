@@ -53,12 +53,15 @@ def github_helper(tools, root):
     os.environ['PATH'] = str(binary) + os.pathsep + os.environ.get('PATH', '')
 
 
-def require_main_check(repository, branch):
+def require_main_check(repository, branch, root):
     runs = api(f'/repos/{repository}/actions/workflows/check.yml/runs?branch={branch}&event=push&per_page=1')['workflow_runs']
     if not runs:
         raise ValueError(f'GitHub has no Check setup run on {branch} yet. Push {branch}, wait for Check setup to pass, '
                          'then rerun ./bilibi release.')
     last = runs[0]
+    if last['head_sha'] != git(root, 'rev-parse', f'refs/remotes/origin/{branch}'):
+        raise ValueError(f'Check setup has not run on the newest {branch} commit yet. Wait for it to start and pass, '
+                         'then rerun ./bilibi release.')
     if last['status'] != 'completed':
         raise ValueError(f'Check setup is still running on {branch}: {last["html_url"]}\n'
                          'Wait for it to pass, then rerun ./bilibi release.')
@@ -199,7 +202,7 @@ def release(tools, root, repository, branch, tag, yes):
                           stdout=subprocess.DEVNULL).returncode:
             git(root, 'fetch', '--quiet', '--no-tags', 'origin', f'refs/tags/{tag}:refs/tags/{tag}')
     else:
-        require_main_check(repository, branch)
+        require_main_check(repository, branch, root)
         tag = choose(root, commit, tag, yes)
         publish.check_new_tag(tag, root)
         publish.start_release(tag, root)
