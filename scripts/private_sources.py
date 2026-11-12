@@ -97,8 +97,8 @@ def manifest(repository, redirect):
     owner, name = repository.split('/')
     home = f'https://github.com/{repository}'
     return {
-        # App names are unique across GitHub and at most 34 characters; the owner may edit it on the page.
-        'name': f'{name[:21]} sources {secrets.token_hex(3)}',
+        # App names are unique across GitHub and at most 34 characters: ' sources ' and 6 hex digits take 15, leaving 19.
+        'name': f'{name[:19].rstrip("-_.")} sources {secrets.token_hex(3)}',
         'url': home,
         'description': f'Lets the checks of {repository} read its private Domains and Extensions.',
         # No webhook: the App only mints read tokens for the checks.

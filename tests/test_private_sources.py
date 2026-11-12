@@ -222,6 +222,13 @@ class ConnectPrivateSourcesTest(unittest.TestCase):
         self.assertFalse([path for path in self.root.rglob('*') if path.is_file() and path != self.state
                           and 'not-a-real-key' in path.read_text(errors='ignore')])
 
+    def test_long_repository_name_keeps_the_app_name_within_the_limit(self):
+        self.git('remote', 'set-url', 'origin', 'git@github.com:acme/my-long-application-name-for-shop.git')
+        self.command('n\n')
+        name = json.loads(self.form.read_text())['manifest']['name']
+        self.assertLessEqual(len(name), 34)
+        self.assertTrue(name.startswith('my-long-application'))
+
     def test_no_keeps_pull_requests_without_the_token(self):
         self.change(lambda github: github['variables'].update({'acme/shop': {'SOURCE_READ_ON_PULL_REQUESTS': 'true'}}))
         output = self.command('maybe\nn\n')
