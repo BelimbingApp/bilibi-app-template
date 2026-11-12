@@ -33,6 +33,7 @@ BUILD_RECORD
 BUILDER = '''#!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+[[ $1 == --development ]] && shift
 if [[ $1 == python3 ]]; then
     # Replace cargo metadata and Platform discovery --pin with the same record
     # shape. The wrapper still fetches, validates and installs the candidate.
@@ -128,7 +129,7 @@ class BuildRecordTest(WorkspaceFixture):
     def test_build_yes_saves_all_three_files_and_builds_new_commits(self):
         head = self.move(self.domain)
         before = self.snapshot()
-        output = self.terminal('build', ['y'])
+        output = self.terminal('check', ['y'])
         self.assertIn(f'finance has new commits since the last build ({self.domain_first[:7]} -> {head[:7]}). Build with them? (y/n)', output)
         self.assertEqual(self.saved()['domains'][0]['commit'], head)
         self.assertEqual(self.built()['domains'][0]['commit'], head)
@@ -139,7 +140,7 @@ class BuildRecordTest(WorkspaceFixture):
     def test_no_builds_saved_versions_without_switching_local_branches(self):
         self.move(self.domain)
         before = self.snapshot()
-        self.terminal('build', ['n'])
+        self.terminal('check', ['n'])
         self.assertEqual(self.built()['domains'][0]['commit'], self.domain_first)
         self.assertEqual(self.record(), self.initial)
         self.assertEqual(self.snapshot(), before)
@@ -161,7 +162,7 @@ class BuildRecordTest(WorkspaceFixture):
         self.assertEqual(self.built()['domains'][0]['commit'], head)
 
     def test_unchanged_build_needs_no_keyboard_and_keeps_lock(self):
-        self.command('build')
+        self.command('check')
         self.assertEqual(self.record(), self.initial)
         self.assertEqual(self.built()['domains'][0]['commit'], self.domain_first)
 
@@ -169,7 +170,7 @@ class BuildRecordTest(WorkspaceFixture):
         leftover = self.app / 'build-recipe'
         leftover.mkdir()
         (leftover / 'marker').write_text('other workspace')
-        self.command('build')
+        self.command('check')
         self.assertEqual(self.built()['domains'][0]['commit'], self.domain_first)
         self.assertEqual((leftover / 'marker').read_text(), 'other workspace')
         self.assertEqual(sorted(p.name for p in self.app.glob('build-recipe*')), ['build-recipe'])
@@ -183,7 +184,7 @@ class BuildRecordTest(WorkspaceFixture):
                 target.write_bytes(before + b'Uncommitted edits\n')
                 snapshot = self.snapshot()
                 self.assertIn(f"{name} has changes that aren't committed. Commit and push them first.",
-                              self.command('build', '--yes', ok=False))
+                              self.command('check', '--yes', ok=False))
                 self.assertEqual(self.record(), self.initial)
                 self.assertEqual(self.snapshot(), snapshot)
                 target.write_bytes(before)
@@ -194,21 +195,21 @@ class BuildRecordTest(WorkspaceFixture):
         self.move(self.domain, push=False)
         before = self.snapshot()
         self.assertIn('finance has commits that are not pushed or cannot be fetched from origin.',
-                      self.command('build', '--yes', ok=False))
+                      self.command('check', '--yes', ok=False))
         self.assertEqual(self.record(), self.initial)
         self.assertEqual(self.snapshot(), before)
 
     def test_other_ci_requires_yes_and_accepts_pushed_commits(self):
         head = self.move(self.domain)
         self.env['CI'] = 'true'
-        self.assertIn('--yes', self.command('build', ok=False))
-        self.command('build', '--yes')
+        self.assertIn('--yes', self.command('check', ok=False))
+        self.command('check', '--yes')
         self.assertEqual(self.built()['domains'][0]['commit'], head)
 
     def test_failed_candidate_keeps_previous_record(self):
         self.move(self.domain)
         (self.app / 'scripts/test-record.py').write_text('raise SystemExit("Candidate failed")\n')
-        self.assertIn('Candidate failed', self.command('build', '--yes', ok=False))
+        self.assertIn('Candidate failed', self.command('check', '--yes', ok=False))
         self.assertEqual(self.record(), self.initial)
 
     def test_added_extension_can_be_declined_then_saved(self):
@@ -216,18 +217,18 @@ class BuildRecordTest(WorkspaceFixture):
         self.git(self.platform, 'clone', 'https://example.test/finance.git', str(extension))
         with (self.platform / '.git/info/exclude').open('a') as stream:
             stream.write('/apps/extensions/extra/\n')
-        output = self.terminal('build', ['n'])
+        output = self.terminal('check', ['n'])
         self.assertIn(f'extra has new commits since the last build (not included -> {self.domain_first[:7]})', output)
         self.assertNotIn('extensions', self.built())
         self.assertTrue(extension.exists())
-        self.command('build', '--yes')
+        self.command('check', '--yes')
         self.assertEqual(self.built()['extensions'][0]['id'], 'extra')
         self.assertEqual(self.built()['extensions'][0]['commit'], self.domain_first)
 
     def test_tag_only_source_commit_can_be_recorded(self):
         head = self.move(self.domain, push=False)
         self.git(self.domain, 'push', 'origin', 'HEAD:refs/tags/component-release')
-        self.command('build', '--yes')
+        self.command('check', '--yes')
         self.assertEqual(self.built()['domains'][0]['commit'], head)
 
     def test_staged_source_edits_are_refused(self):
@@ -236,12 +237,6 @@ class BuildRecordTest(WorkspaceFixture):
         before = self.snapshot()
         self.assertIn("finance has changes that aren't committed", self.command('check', '--yes', ok=False))
         self.assertEqual(self.snapshot(), before)
-
-    def test_failed_build_keeps_previous_record_untouched(self):
-        self.move(self.domain)
-        (self.app / 'scripts/build.sh').write_text('exit 1\n')
-        self.command('build', '--yes', ok=False)
-        self.assertEqual(self.record(), self.initial)
 
     def test_failed_check_keeps_previous_record_untouched(self):
         self.move(self.domain)
@@ -256,15 +251,18 @@ class BuildRecordTest(WorkspaceFixture):
 
     def test_release_requires_successful_build_for_current_record(self):
         output = self.command('release', '--tag', 'setup-v1.2.3-test', ok=False)
-        self.assertEqual(output.strip(), 'Run ./bilibi build first.')
-        self.command('build')
+        self.assertEqual(output.strip(), 'Run ./bilibi check first.')
+        # An old build-only success must not stand in for the combined check.
+        (self.app / '.local/successful-build').write_text('legacy success\n')
+        self.assertIn('Run ./bilibi check first.', self.command('release', '--tag', 'setup-v1.2.3-test', ok=False))
+        self.command('check')
         (self.app / 'setup.toml').write_text((self.app / 'setup.toml').read_text() + '# changed after build\n')
         output = self.command('release', '--tag', 'setup-v1.2.3-test', ok=False)
         self.assertIn('Commit the successful build record', output)
 
     def test_release_requires_reviewed_record_and_pushes_existing_workflow_tag(self):
         head = self.move(self.domain)
-        self.command('build', '--yes')
+        self.command('check', '--yes')
         record = self.record()
         self.assertIn('Commit the successful build record',
                       self.command('release', '--tag', 'setup-v1.2.3-test', ok=False))
@@ -282,7 +280,7 @@ class BuildRecordTest(WorkspaceFixture):
 
     def test_release_refuses_unrelated_staged_unstaged_or_untracked_work(self):
         self.move(self.domain)
-        self.command('build', '--yes')
+        self.command('check', '--yes')
         for mode in ('unstaged', 'staged', 'staged_then_restored', 'untracked'):
             with self.subTest(mode=mode):
                 path = self.app / ('extra' if mode == 'untracked' else 'notes')
@@ -302,7 +300,7 @@ class BuildRecordTest(WorkspaceFixture):
                     path.write_bytes(original)
 
     def test_release_with_committed_record_does_not_make_empty_commit(self):
-        self.command('build')
+        self.command('check')
         self.git(self.app, 'push', 'origin', 'HEAD:main')
         before = self.git(self.app, 'rev-parse', 'HEAD')
         self.command('release', '--tag', 'setup-v2.0.0-test')
@@ -312,7 +310,7 @@ class BuildRecordTest(WorkspaceFixture):
         self.git(self.author, 'tag', 'setup-v1.0.0')
         self.git(self.author, 'push', 'origin', 'refs/tags/setup-v1.0.0')
         self.move(self.domain)
-        self.command('build', '--yes')
+        self.command('check', '--yes')
         self.git(self.app, 'add', *RECORD_FILES)
         self.git(self.app, 'commit', '-m', 'Record reviewed build')
         self.git(self.app, 'push', 'origin', 'HEAD:main')
@@ -323,7 +321,15 @@ class BuildRecordTest(WorkspaceFixture):
     def test_help_lists_release_and_yes(self):
         help_text = self.command('help')
         self.assertIn('release --tag setup-vX.Y.Z', help_text)
-        self.assertIn('build --yes', help_text)
+        self.assertIn('check --yes', help_text)
+        self.assertNotIn('build --yes', help_text)
+        self.assertNotIn('  build ', help_text)
+        for args in (['--help'], ['build'], ['build', '--yes']):
+            result = subprocess.run([str(self.app / 'bilibi'), *args], env=self.env,
+                                    capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0 if args == ['--help'] else 2)
+            self.assertNotIn('check,build', result.stdout + result.stderr)
+        self.assertFalse((self.app / '.local/successful-check').exists())
 
 
 if __name__ == '__main__':

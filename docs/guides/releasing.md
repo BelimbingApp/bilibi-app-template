@@ -1,16 +1,17 @@
 # Releasing your application
 
-Build the versions you want to use, check them, then release the saved build record to your servers.
+Check the versions you want to use, then release the saved build record to your servers.
 
-## Build your versions
+## Check your versions
 
-For example, fix Finance in `sources/platform/apps/domains/finance`, then commit and push it to `origin`. Run:
+For example, fix Finance in `sources/platform/apps/domains/finance`, then commit and push it to `origin`. Provide a separate empty disposable PostgreSQL 18 database, then run:
 
 ```sh
-./bilibi build
+export BILIBI_CHECK_DATABASE_URL=postgresql://YOUR-USER@127.0.0.1:5432/EMPTY-DISPOSABLE-DATABASE
+./bilibi check
 ```
 
-Build compares each local Platform, Domain and Extension checkout with the last saved build record. For each part that changed, it asks:
+Check compares each local Platform, Domain and Extension checkout with the last saved build record. For each part that changed, it asks:
 
 ```text
 finance has new commits since the last build (abc1234 -> def5678). Build with them? (y/n)
@@ -18,37 +19,36 @@ finance has new commits since the last build (abc1234 -> def5678). Build with th
 
 Say **yes** to use those commits and save them, or **no** to build that part's saved version. You can choose separately for each part. A newly added part shows `not included` as its previous version. Your local branches stay where they are.
 
-**Commit and push your source edits first.** Build stops for uncommitted edits or commits that cannot be fetched from `origin`. It allows only verified generated composition files in the Platform checkout. `./bilibi check` uses the same choices. With no terminal, a changed part stops the command; `./bilibi build --yes` or `./bilibi check --yes` accepts all new pushed commits in a script.
+**Commit and push your source edits first.** Check stops for uncommitted edits or commits that cannot be fetched from `origin`. It allows only verified generated composition files in the Platform checkout. With no terminal, a changed part stops the command; `./bilibi check --yes` accepts all new pushed commits in a script.
 
-When you accept a change, the command fetches a candidate from the declared HTTPS remotes without reusing local Git objects. It checks assets, resolves dependencies in the recorded builder and validates the record and lock. It builds or checks a separate checkout of that candidate, and only after the command succeeds does it replace `setup.toml`, `composition/manifest.txt` and `composition/Cargo.lock`. A failed candidate, compilation or check leaves the previous saved set intact. Release is allowed only when the current record matches the record from the last successful build or check; otherwise run `./bilibi build` first.
+When you accept a change, the command fetches a candidate from the declared HTTPS remotes without reusing local Git objects. It checks assets, resolves dependencies in the recorded builder and validates the record and lock. It builds and checks a separate checkout of that candidate, and only after the command succeeds does it replace `setup.toml`, `composition/manifest.txt` and `composition/Cargo.lock`. A failed candidate, compilation or check leaves the previous saved set intact. Release is allowed only when the current record matches the record from the last successful check; otherwise run `./bilibi check` first.
 
 Each source URL must use HTTPS without credentials and each commit must be a full lowercase 40-character ID. Domains and Extensions also need their declared `id`. Domains and Extensions are optional. Keep each part's `origin` at the URL in the saved record.
 
-Builds with no accepted changes restore the saved dependency lock. They do not choose new dependencies. The release workflow on GitHub always builds only the committed record, even if `--yes` is supplied. It never asks about local sources or updates the record.
+Checks with no accepted changes restore the saved dependency lock. They do not choose new dependencies. The release workflow on GitHub always builds only the committed record, even if `--yes` is supplied. It never asks about local sources or updates the record.
 
 Run the combined gates with a **separate empty disposable PostgreSQL 18 database**:
 
 ```sh
 export BILIBI_CHECK_DATABASE_URL=postgresql://YOUR-USER@127.0.0.1:5432/EMPTY-DISPOSABLE-DATABASE
 ./bilibi check
-./bilibi build
 ```
 
 `DATABASE_URL` remains your development connection and is never an implicit check target. Check refuses the same database or a database with existing tables or views. Check leaves its migrations and production seed in the disposable database; provide a new empty database on the next run. It seeds that database as a Dev copy, because its boot check uses HTTP on a loopback address, which the Platform allows only for Dev copies. Set `SETUP_CI_PORT` if the default check port, 38971, is occupied.
 
-`BILIBI_SOURCE_DIR` overrides the source directory; `BILIBI_BUILD_DIR` still overrides outputs and caches. `CARGO_TARGET_DIR` overrides Cargo output. Use absolute paths outside editable sources for outputs. The native builder uses these paths directly. Record candidates use a separate checkout beside the build directory and share the pinned tools and compiler caches. Your editable sources stay untouched.
+`BILIBI_SOURCE_DIR` overrides the source directory; `BILIBI_BUILD_DIR` still overrides outputs and caches. `CARGO_TARGET_DIR` overrides Cargo output. Use absolute paths outside editable sources for outputs. The native builder uses these paths directly. Record candidates use a separate checkout beside the build directory and share tools and compiler caches. Your editable sources stay untouched.
 
 ## Release your setup
 
 **Build in development or GitHub Actions; servers install the finished release.** Before releasing, enable **release immutability** in your application repository's Settings. Protect `main` and the `setup-v*` tags so only release maintainers can change them, and allow GitHub Actions to run.
 
-After the checks pass, start a release with a new application version:
+After check succeeds, commit `setup.toml`, `composition/manifest.txt` and `composition/Cargo.lock` (an adopted application also has `maker.lock` committed, which check covers but never changes), review that commit, and merge it into the application's default branch. Then start a release with a new application version:
 
 ```sh
 ./bilibi release --tag setup-v1.0.0
 ```
 
-After the build succeeds, commit `setup.toml`, `composition/manifest.txt` and `composition/Cargo.lock` (an adopted application also has `maker.lock` committed, which the build covers but never changes), review that commit, and merge it into the application's default branch. `./bilibi release` refuses any uncommitted file, a commit outside the remote default branch, or a record that differs from the last successful build or check. It tags that reviewed record and pushes the tag to `origin`, starting **Release setup**. Release never selects or commits source versions.
+`./bilibi release` refuses any uncommitted file, a commit outside the remote default branch, or a record that differs from the last successful check. It tags that reviewed record and pushes the tag to `origin`, starting **Release setup**. Release never selects or commits source versions.
 
 The setup version belongs to your repository. It is separate from the Platform and Domain versions. **Never move a published tag or replace a published asset.**
 
@@ -91,11 +91,11 @@ GitHub stores the signed provenance separately from the release assets. Servers 
 
 Only Linux x86-64 (`x86_64-unknown-linux-gnu`) is supported by this maker today. `rust-toolchain.toml` pins Rust 1.99.0. `builder.toml` pins Node 24.6.0, Zig 0.14.1 and cargo-zigbuild 0.24.1, including download checksums. PostgreSQL 18 runs natively for check.
 
-Install the native prerequisites on Ubuntu or Debian: `sudo apt-get install build-essential binutils python3-venv curl postgresql-client-18`. PostgreSQL 18 packages may need the [PostgreSQL apt repository](https://www.postgresql.org/download/linux/ubuntu/). Run `./bilibi setup` to prepare the pinned tools. Setup uses Rust through rustup and installs the checked Node archive (including npm), Zig and cargo-zigbuild under the build directory. If a tool on your PATH has a different version, setup stops and names the required version. Build and check perform the same checks automatically.
+Install the native prerequisites on Ubuntu or Debian: `sudo apt-get install build-essential binutils python3-venv curl postgresql-client-18`. PostgreSQL 18 packages may need the [PostgreSQL apt repository](https://www.postgresql.org/download/linux/ubuntu/). Run `./bilibi setup` to prepare the tools. Local setup, start and check use installed stable Node 22+ with working npm, matching the Platform asset package and locked dependencies. If unavailable or unsupported, they automatically select the checksum-verified Node archive (including npm) under the build directory. They never change global Node/npm. Rust, Zig and cargo-zigbuild retain their pins. An installed Zig or cargo-zigbuild mismatch still stops preparation.
 
-Arch Linux and Omarchy are supported too. Run `./bilibi setup`; it installs missing native prerequisites with pacman, including rustup, build tools, Python and PostgreSQL 18. Node and Zig keep the exact versions above, independently of Arch's rolling packages. If pacman offers a different PostgreSQL major, setup stops and asks for PostgreSQL 18 packages. Setup never creates a system PostgreSQL cluster.
+Arch Linux and Omarchy are supported too. Run `./bilibi setup`; it installs missing native prerequisites with pacman, including rustup, build tools, Python and PostgreSQL 18. Node follows the same local selection policy; Zig keeps the exact version above, independently of Arch's rolling packages. If pacman offers a different PostgreSQL major, setup stops and asks for PostgreSQL 18 packages. Setup never creates a system PostgreSQL cluster.
 
-Local commands and the GitHub release workflow both call `scripts/builder.sh`. That wrapper prepares the native tools, records their actual versions and the host packages. Cargo picks its own job count; set `CARGO_BUILD_JOBS` to limit it on a small machine. It keeps temporary compiler files under the build directory. The release workflow uses no containers; PostgreSQL runs as a disposable native cluster.
+Local commands and the GitHub release workflow both call `scripts/builder.sh`. That wrapper prepares native tools and records their actual versions and host packages. Internal artifact builds and CI always use the checked pinned Node archive, even when installed Node differs. Local check passes the internal `--development` option. Compiled binary hashes are bound to their build toolchain evidence; packaging requires pinned build evidence matching those bytes, and cannot relabel a local Node build after changing PATH. GitHub rebuilds the reviewed record before packaging. Cargo picks its own job count; set `CARGO_BUILD_JOBS` to limit it on a small machine. It keeps temporary compiler files under the build directory. The release workflow uses no containers; PostgreSQL runs as a disposable native cluster.
 
 Cargo-zigbuild links release programs with Zig for `x86_64-unknown-linux-gnu.2.36`. This keeps the Debian 12 glibc baseline even when your computer uses newer glibc. We keep GNU Linux linkage to preserve the runtime libraries used by the Platform. Both release binaries are checked with `objdump`; any required glibc version above 2.36 fails the build. The recipe records the baseline, the actual required version and dynamic dependencies for each binary. Check the actual target server's libraries before promotion. Distributed programs do not use `target-cpu=native`.
 

@@ -15,13 +15,13 @@ Brings in 2 maker commit(s):
   b19e4f2 Retry Platform downloads once
 Compare: https://github.com/BelimbingProject/bilibi-app-maker/compare/3f2a1c9e…...8c41d07a…
 Installed maker commit 8c41d07a…; tooling sha256 5d0e…
-Updated application and restored saved source commits and composition. Run ./bilibi build to choose new versions.
+Updated application and restored saved source commits and composition. Run ./bilibi check to choose new versions.
 maker.lock now records maker commit 8c41d07a… (2 in, 0 out). Commit it and open an application pull request: its diff lists the maker commits and the compare link.
 ```
 
 Notice what happened, in order. Before any new maker code ran, update listed the maker commits it was about to bring in, with a link that shows the full difference on GitHub. Then it installed that maker version, fast-forwarded your application to your team's latest pushed commit, and restored the Platform, Domain and Extension commits saved in `setup.toml`. Finally it wrote the new maker commit into `maker.lock`, which is now an uncommitted change in your checkout.
 
-Notice also what did **not** happen: update did not push, did not open a pull request, and did not choose new Platform or Domain versions (that is still `./bilibi build`).
+Notice also what did **not** happen: update did not push, did not open a pull request, and did not choose new Platform or Domain versions (that is still `./bilibi check`).
 
 You may already have questions: why a file has to be committed, what runs in CI meanwhile, and what to do when a new maker version breaks something. We cover each of these below.
 
@@ -43,13 +43,13 @@ If your application has `maker.lock`, use `update`; `./bilibi upgrade` stops the
 
 | Where | Which maker runs |
 | --- | --- |
-| `./bilibi start`, `status`, `build`, `check`, `release`, `setup`, `add` | The commit in `maker.lock` in your checkout |
+| `./bilibi start`, `status`, `check`, `release`, `setup`, `add` | The commit in `maker.lock` in your checkout |
 | A teammate's fresh clone | The commit in `maker.lock` they cloned; never the newest maker |
 | The pre-commit hook | The commit in `maker.lock`, if it is already installed; otherwise the hook does nothing |
 | CI and release (`./bilibi tooling`) | The commit in `maker.lock` in the commit being checked |
 | `./bilibi update` | The newest official maker `main`, which it then records in `maker.lock` |
 
-**Only `./bilibi update` moves `maker.lock`.** A build, a check and a release never rewrite it. A release tags the record together with `maker.lock`, so you can always see which maker built a release.
+**Only `./bilibi update` moves `maker.lock`.** Check and release never rewrite it. A release tags the record together with `maker.lock`, so you can always see which maker built a release.
 
 ## Publishing a maker update
 
@@ -121,7 +121,7 @@ Nothing from the maker runs on your computer during the upgrade. **Merge that pu
 
 If the merge stops on a conflict, upgrade stops on the new branch before pushing and lists the conflicted files. Keep what you need from both sides (for `setup.toml` and `composition/`, keep yours), run `git add --all` and `git commit --no-edit`, then run `./bilibi upgrade` again. The message also prints the commands that undo the merge.
 
-Upgrade does not move the Platform, Domains and Extensions in `setup.toml` to newer releases; choose new versions with `./bilibi build`, as [Releasing your application](releasing.md) explains.
+Upgrade does not move the Platform, Domains and Extensions in `setup.toml` to newer releases; choose new versions with `./bilibi check`, as [Releasing your application](releasing.md) explains.
 
 ## One-time adoption
 

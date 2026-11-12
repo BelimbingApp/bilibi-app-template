@@ -81,7 +81,7 @@ def check_sources():
         if folder.is_symlink() or Path(run('git', 'rev-parse', '--show-toplevel', cwd=folder, capture=True).strip()).resolve() != folder:
             raise ValueError(f'{path}: expected an independent checkout')
         if run('git', 'rev-parse', 'HEAD', cwd=folder, capture=True).strip() != source['commit']:
-            raise ValueError(f'{folder}: HEAD differs from the saved build record; run ./bilibi build to choose versions, or check out {source["commit"]}')
+            raise ValueError(f'{folder}: HEAD differs from the saved build record; run ./bilibi check to choose versions, or check out {source["commit"]}')
         if run('git', 'remote', 'get-url', 'origin', cwd=folder, capture=True).strip() != source['url']:
             raise ValueError(f'{path}: origin differs from setup.toml')
         # Only the discover-modules outputs may differ in the Platform checkout.
@@ -131,7 +131,7 @@ def materialize():
             head = run('git', 'rev-parse', 'HEAD', cwd=folder, capture=True).strip()
             origin = run('git', 'remote', 'get-url', 'origin', cwd=folder, capture=True).strip()
             if head != source['commit'] or origin != source['url']:
-                print(f'{folder}: differs from the saved build record. Run ./bilibi build to choose versions.')
+                print(f'{folder}: differs from the saved build record. Run ./bilibi check to choose versions.')
 
 
 def discovery_module():
