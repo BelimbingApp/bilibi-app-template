@@ -55,6 +55,22 @@ class SanitizeTest(unittest.TestCase):
     def test_unterminated_private_key_is_removed_to_the_end(self):
         self.assertNotIn('MIIE', app_state.sanitize('-----BEGIN PRIVATE KEY-----\nMIIEabc'))
 
+    def test_key_cut_by_the_log_window_is_redacted_in_every_log_reader(self):
+        fragment = 'KEYBODY0001' + 'A' * 40 + '\n-----END PRIVATE KEY-----\nerror: after the key\n'
+        cleaned = app_state.sanitize(fragment)
+        self.assertNotIn('KEYBODY', cleaned)
+        self.assertNotIn('END PRIVATE KEY', cleaned)
+        self.assertIn('error: after the key', cleaned)
+        window = 4 * 16 * 1024
+        key = '-----BEGIN PRIVATE KEY-----\n' + fragment
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / '.local/jobs').mkdir(parents=True)
+            raw = (key + 'x\n' * (window // 2)).encode()
+            (root / '.local/jobs/job1.log').write_bytes(raw)
+            for read in (app_state.tail_file(root / '.local/jobs/job1.log'), jobs.log(root, 'job1')):
+                self.assertNotIn('KEYBODY', read)
+                self.assertNotIn('END PRIVATE KEY', read)
 
 class AddressTest(unittest.TestCase):
     def setUp(self):
