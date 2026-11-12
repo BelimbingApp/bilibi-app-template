@@ -62,7 +62,7 @@ After check succeeds, commit `setup.toml`, `composition/manifest.txt` and `compo
 
 Release walks you through every step and prints what it is doing:
 
-1. **Checks your checkout.** It refuses any uncommitted file, a commit that is not on the remote default branch, a record that differs from your last successful `./bilibi check`, and a default branch whose last **Check setup** run on GitHub did not pass.
+1. **Checks your checkout.** It refuses any uncommitted file, a commit that is not on the remote default branch, a record that differs from your last successful `./bilibi check`, a copy that is behind the remote default branch, and a default branch whose **Check setup** run for this exact commit is missing, still running or did not pass.
 2. **Suggests the next version.** For example, after `setup-v1.2.3` it offers `setup-v1.2.4`; the first release is `setup-v1.0.0`. Press Enter to accept it, type another version such as `setup-v1.3.0`, or type `no` to stop without changing anything.
 3. **Pushes the tag** to `origin`. This starts the **Release setup** build on GitHub.
 4. **Waits for the build** and shows its link. The build takes a while. You can stop waiting with Ctrl+C; the build carries on, and `./bilibi release --tag setup-v1.2.4` continues from where you left off.

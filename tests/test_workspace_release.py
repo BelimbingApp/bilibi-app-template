@@ -174,10 +174,18 @@ class ReleaseTest(BuildFixture):
                 self.assertIn('https://github.com/acme/shop/actions/runs/check/2', output)
                 self.assertEqual(self.remote_tags(), '')
 
+    def test_refuses_when_the_copy_is_behind_main(self):
+        self.git(self.app, 'commit', '--allow-empty', '-m', 'Newer main')
+        self.git(self.app, 'push', 'origin', 'HEAD:main')
+        self.git(self.app, 'reset', '--hard', 'HEAD~1')
+        output = self.command('release', '--tag', 'setup-v1.0.0', '--yes', ok=False)
+        self.assertIn('Your copy is behind main; pull first', output)
+        self.assertEqual(self.remote_tags(), '')
+
     def test_refuses_when_the_newest_check_is_for_an_older_commit(self):
         self.github(checks=[{**self.run_state('completed', 'success', 'check/3'), 'head_sha': 'a' * 40}])
         output = self.command('release', '--tag', 'setup-v1.0.0', '--yes', ok=False)
-        self.assertIn('has not run on the newest main commit yet', output)
+        self.assertIn('has not run on this main commit yet', output)
         self.assertEqual(self.remote_tags(), '')
 
     def test_failed_build_explains_the_rerun_and_the_same_command_continues(self):

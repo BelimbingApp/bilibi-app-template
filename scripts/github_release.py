@@ -54,13 +54,16 @@ def github_helper(tools, root):
 
 
 def require_main_check(repository, branch, root):
+    commit = git(root, 'rev-parse', 'HEAD')
+    if commit != git(root, 'rev-parse', f'refs/remotes/origin/{branch}'):
+        raise ValueError(f'Your copy is behind {branch}; pull first, then rerun ./bilibi release.')
     runs = api(f'/repos/{repository}/actions/workflows/check.yml/runs?branch={branch}&event=push&per_page=1')['workflow_runs']
     if not runs:
         raise ValueError(f'GitHub has no Check setup run on {branch} yet. Push {branch}, wait for Check setup to pass, '
                          'then rerun ./bilibi release.')
     last = runs[0]
-    if last['head_sha'] != git(root, 'rev-parse', f'refs/remotes/origin/{branch}'):
-        raise ValueError(f'Check setup has not run on the newest {branch} commit yet. Wait for it to start and pass, '
+    if last['head_sha'] != commit:
+        raise ValueError(f'Check setup has not run on this {branch} commit yet. Wait for it to start and pass, '
                          'then rerun ./bilibi release.')
     if last['status'] != 'completed':
         raise ValueError(f'Check setup is still running on {branch}: {last["html_url"]}\n'
