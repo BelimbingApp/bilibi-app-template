@@ -579,7 +579,7 @@ def own(repository):
     print('Step 3 of 3: push main to your repository')
     own_step('git', 'push', '--set-upstream', 'origin', 'main')
     print(f'This copy is now yours. origin is {url}, where you push; upstream is the maker, where later '
-          'improvements come from. Next, run ./bilibi adopt to take maker updates with ./bilibi update; '
+          'improvements come from. Next, run ./bilibi setup to take maker updates with ./bilibi update; '
           'see "Start here" in README.md.')
 
 
@@ -978,7 +978,7 @@ def main():
               '                upstream, and push main.\n\n'
               'Work with your team\n'
               '  update        Get your team\'s changes and saved source versions. After\n'
-              '                one-time adoption it first moves maker.lock to the newest\n'
+              '                first setup it first moves maker.lock to the newest\n'
               '                maker and lists the maker commits; commit maker.lock in a PR.\n'
               '                --to <commit> or --back returns to an earlier maker.\n'
               '\n'
@@ -1000,8 +1000,8 @@ def main():
               '                merge the maker\'s files: one pull request for you to review.\n'
               '                docs/guides/maker-updates.md explains update and upgrade.\n\n'
               'Less often\n'
-              '  setup         Install the tools and fetch the sources, without starting.\n'
-              '  adopt         One-time shared-tooling adoption; see docs/guides/maker-updates.md.\n'
+              '  setup         Adopt shared tooling once, then prepare sources and prerequisites.\n'
+              '                Reruns use maker.lock; no build, start or database migration.\n'
               '  help          Show this list.')
         return
     if args.command == 'status':

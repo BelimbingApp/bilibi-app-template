@@ -19,11 +19,12 @@ Use Bilibi app maker to run your own Bilibi on your servers. For developing and 
 
 ## Start here
 
-1. Clone the maker into a folder named after your product, and start it:
+1. Clone the maker into a folder named after your product, prepare it, then start it:
 
 ```sh
 git clone https://github.com/BelimbingProject/bilibi-app-maker my-bilibi
 cd my-bilibi
+./bilibi setup
 ./bilibi start
 ```
 
@@ -31,7 +32,7 @@ Your copy opens at `https://bilibi.localhost`. If you run more than one Bilibi o
 
 Leave `./bilibi start` running; it rebuilds and reloads when the code changes. Run `./bilibi update` any time, including in another terminal while start is running, to bring your application and sources to their saved commits. After the one-time adoption below, it first moves `maker.lock` to the newest maker and lists the maker commits, so you can publish that change in a pull request.
 
-The first start installs what is missing, such as Rust, PostgreSQL and Node, and builds Bilibi, so it takes a while. On the first start, Bilibi opens in your browser at the sign-in page. Later starts print its address. Sign in as `ai@agent.my` / `bilibi-dev`. You now have the Platform on its own: sign-in, companies, people, users, permissions and audit.
+Setup records the official maker in `maker.toml` and `maker.lock`, then prepares sources and prerequisites such as Rust, PostgreSQL and Node. It does not build, start services or migrate a database. Repeated setup uses the same lock; `./bilibi update` deliberately takes newer maker and application versions. The first start builds Bilibi, so it takes a while. On the first start, Bilibi opens in your browser at the sign-in page. Later starts print its address. Sign in as `ai@agent.my` / `bilibi-dev`. You now have the Platform on its own: sign-in, companies, people, users, permissions and audit.
 
 2. Add the business features you want. A Domain is one business area, such as Finance; an Extension adapts or connects one. The first `./bilibi start` lists them, with a line about each, before it builds anything. Move with the arrow keys and tick with space, or type an item's number, then press Enter and `y` to add them. To see the list again later:
 
@@ -87,7 +88,7 @@ Each step prints the command it runs, so you can see what happened. If `your-com
 Now adopt the maker's shared tooling, and push that too:
 
 ```sh
-./bilibi adopt
+./bilibi setup
 git add bilibi maker.toml maker.lock
 git commit -m "Adopt versioned shared maker tooling"
 git push
@@ -96,7 +97,7 @@ git push
 Your folder now has two remotes. `origin` is your application, where you push. `upstream` is the maker. `./bilibi update` takes its later tooling improvements without merging maker files, and records the maker version in `maker.lock`. `./bilibi upgrade` moves the Platform to its newest recommended release, and in an application that still carries copied maker files it also merges them, through one pull request. See [Take maker updates](docs/guides/maker-updates.md).
 
 > [!WARNING]
-> Clone the maker as shown. A copy made any other way, such as a downloaded ZIP file, has none of the maker's history. One-time adoption then needs matching official copied tooling or a deliberate manual review.
+> Clone the maker as shown. A copy made any other way, such as a downloaded ZIP file, has none of the maker's history. First setup requires a Git checkout and verifies retained managed scripts against official maker history. Customized managed scripts need an explicit port before setup can continue.
 
 4. Check and release the versions you tested. Commit and push changes in each part's own repository first. Check uses supported installed Node, with automatic private fallback; GitHub builds releases with pinned tools. Provide a separate empty PostgreSQL 18 database for check (see the release guide):
 

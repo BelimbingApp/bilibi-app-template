@@ -4,13 +4,16 @@ Run your application on your own machine with `./bilibi start`.
 
 ## Run an existing application
 
-Clone your application's repository, then run:
+Clone your application's repository, prepare it, then start it:
 
 ```sh
+./bilibi setup
 ./bilibi start
 ```
 
-The same command works with or without an AI agent. It obtains missing sources, installs commit safeguards, prepares missing prerequisites, and starts the existing development launcher. Bilibi opens in your browser at the sign-in page when it is ready; sign in as `ai@agent.my` / `bilibi-dev`. If no browser opens, open the address the launcher prints. Set `BILIBI_OPEN_BROWSER=0` to stop it opening. Local HTTPS may need manual trust; the launcher keeps its loopback HTTP fallback.
+Setup works with or without an AI agent. On its first run in a legacy copied-tooling application it verifies the copied scripts, creates `maker.toml` and `maker.lock`, then prepares prerequisites. An application that already has a lock, including a fresh clone, uses that exact maker commit. Setup obtains missing sources, installs commit safeguards and prepares missing prerequisites. It does not build, start services or migrate a database.
+
+Start also prepares anything missing before running the existing development launcher. Bilibi opens in your browser at the sign-in page when it is ready; sign in as `ai@agent.my` / `bilibi-dev`. If no browser opens, open the address the launcher prints. Set `BILIBI_OPEN_BROWSER=0` to stop it opening. Local HTTPS may need manual trust; the launcher keeps its loopback HTTP fallback.
 
 Use Ubuntu, Debian, Arch Linux or Omarchy, including Ubuntu or Debian on WSL2. You need Git, Bash, Python 3.11 or newer, network access and installation privileges. Setup may ask for your sudo password. Ubuntu 22.04 and Debian 11 ship older Python; install Python 3.11 or newer as `python3`, or use Ubuntu 24.04 or Debian 12.
 
@@ -66,7 +69,7 @@ Run commands from the application's root folder. `./bilibi help` shows the same 
 | `./bilibi check` | Asks about new commits, builds and tests against an empty test database, then saves your choices if it passes. | Before a release |
 | `./bilibi release` | Suggests the next version, pushes its tag, waits for the GitHub build, publishes the release, downloads and checks the archive, and prints what to upload on the Software page. Refuses uncommitted files, a record without a successful check, a copy behind the default branch, or a default branch whose check for this commit has not passed. | After check passes and the record is merged |
 | `./bilibi connect-private-sources` | Creates a GitHub App that can only read the private Domains and Extensions in `setup.toml`, stores it in your application repository, and opens its install page | Once, when your application first uses a private source; see [Private sources](private-sources.md) |
-| `./bilibi setup` | Installs the tools and fetches the sources, without starting | When you want everything ready in advance |
+| `./bilibi setup` | Transitions copied tooling once, then prepares sources and prerequisites with `maker.lock`; no build, start or database migration | First preparation and safe reruns |
 | `./bilibi help` | Shows the command list | Any time |
 
 `./bilibi new` belongs to the Platform repository. In an application repository, you already own the application recipe.
@@ -111,7 +114,7 @@ An existing executable pre-commit hook is preserved as `pre-commit.before-bilibi
 
 ## Daily maker and application updates
 
-After [one-time shared-tooling adoption](maker-updates.md#one-time-adoption), every command runs the maker commit recorded in `maker.lock`. `./bilibi update` first lists the maker commits between that record and official maker `main`, installs the newest one and writes it into `maker.lock`, then updates your application and its saved component set. It never pushes or opens a pull request: commit `maker.lock` and open one yourself, as [Publishing a maker update](maker-updates.md#publishing-a-maker-update) shows. Local edits or unpushed commits stop the application step with recovery guidance.
+After [one-time shared-tooling adoption](maker-updates.md#first-setup-and-migration), every command runs the maker commit recorded in `maker.lock`. `./bilibi update` first lists the maker commits between that record and official maker `main`, installs the newest one and writes it into `maker.lock`, then updates your application and its saved component set. It never pushes or opens a pull request: commit `maker.lock` and open one yourself, as [Publishing a maker update](maker-updates.md#publishing-a-maker-update) shows. Local edits or unpushed commits stop the application step with recovery guidance.
 
 ## Where to go next
 

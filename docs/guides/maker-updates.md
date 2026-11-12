@@ -2,7 +2,7 @@
 
 Your application uses shared tooling from the maker, such as the setup, build and release scripts, and `./bilibi update` moves it to the newest version in one command.
 
-Here is a normal morning after the one-time [adoption](#one-time-adoption):
+Here is a normal morning after the one-time [adoption](#first-setup-and-migration):
 
 ```sh
 ./bilibi update
@@ -31,7 +31,7 @@ There are two ways to take maker changes. They suit different applications:
 
 | | `./bilibi update` | `./bilibi upgrade` |
 | --- | --- | --- |
-| For | An application that has done the [one-time adoption](#one-time-adoption): it has `maker.toml` and `maker.lock` | Every application. The maker files are merged only in one that still carries copied maker files |
+| For | An application that has done the [one-time adoption](#first-setup-and-migration): it has `maker.toml` and `maker.lock` | Every application. The maker files are merged only in one that still carries copied maker files |
 | How | Moves `maker.lock` to the newest maker; no maker files are merged | Merges the maker's `main` into a new branch, moves the Platform to its newest recommended release, and opens one pull request |
 | Result | One changed file, `maker.lock`, in your checkout, which you commit in a pull request | A pull request with the maker's file changes, the new Platform versions and the upgrade notes for agents |
 
@@ -97,7 +97,7 @@ We trust the maker because of how changes reach it: **official maker `main` acce
 
 The SHA-256 is a fingerprint, not a signature. It proves that the installed files have not changed since they were installed from that maker commit, and it lets CI check that `maker.lock` names the same files. It says nothing about who wrote the code; that trust comes from review on maker `main` and in your application.
 
-The maker versions live inside your checkout Git folder, at `git rev-parse --git-path bilibi-maker`. Ordinary commands compare the installed folder with the SHA-256 in `maker.lock` and run it without going online. Only `update`, `adopt`, and the first run of a maker version on a machine download anything.
+The maker versions live inside your checkout Git folder, at `git rev-parse --git-path bilibi-maker`. Ordinary commands compare the installed folder with the SHA-256 in `maker.lock` and run it without going online. Only `update`, the first setup without a lock, and the first run of a locked maker version on a machine download maker tooling. Repeated setup with installed tooling works offline and keeps its lock.
 
 > [!WARNING]
 > Git settings in your own configuration, such as a proxy or `http.sslVerify=false`, also apply to these downloads, just as they do for `git clone`. Do not point Git URL rewrites at servers you do not trust.
@@ -156,11 +156,11 @@ If the merge stops on a conflict, upgrade stops on the new branch before pushing
 
 ### Applications with maker.lock
 
-An application that has done the [one-time adoption](#one-time-adoption) takes maker updates with `./bilibi update` instead, so upgrade merges no maker files there. It still moves the Platform, on a branch such as `platform-upgrade-v0.3.0`, in one pull request with the upgrade notes.
+An application that has done the [one-time adoption](#first-setup-and-migration) takes maker updates with `./bilibi update` instead, so upgrade merges no maker files there. It still moves the Platform, on a branch such as `platform-upgrade-v0.3.0`, in one pull request with the upgrade notes.
 
-## One-time adoption
+## First setup and migration
 
-New applications cloned from a maker with this bootstrap run `./bilibi adopt` after `./bilibi own <owner>/<name>` connects `origin` to their own repository. Review and commit `bilibi`, `maker.toml` and `maker.lock`, then push through the usual review process of your application. From then on, daily work uses `./bilibi update`.
+Run `./bilibi setup` to prepare a new application or an older application with copied tooling. Without `maker.toml` and `maker.lock`, it first transitions to shared tooling, writes those files, then runs prerequisite setup. With a lock, it skips the transition and prepares with that exact commit, including in a fresh clone. If prerequisites fail after the transition, the files remain for inspection and a retry uses the same pin. Setup never selects a newer pin on a rerun; use `./bilibi update` for that. It does not build, start services or migrate a database. Review and commit `bilibi`, `maker.toml` and `maker.lock`, then push through the usual review process of your application. From then on, daily work uses `./bilibi update`.
 
 For an older application with copied tooling, start from a **clean checkout** with no unresolved merge, and keep a copy of any work and runtime data first. Point `upstream` at the official maker (add it if it is missing):
 
@@ -178,7 +178,7 @@ git show upstream/main:bilibi > .git/bilibi-reviewed-bootstrap
 # Inspect .git/bilibi-reviewed-bootstrap before executing it.
 cp .git/bilibi-reviewed-bootstrap bilibi
 chmod +x bilibi
-./bilibi adopt
+./bilibi setup
 git diff -- bilibi maker.toml
 git add bilibi maker.toml maker.lock
 git commit -m "Adopt versioned shared maker tooling"
@@ -186,9 +186,13 @@ git commit -m "Adopt versioned shared maker tooling"
 
 These example `.git/` paths assume an ordinary clone; in a linked worktree, get each path with `git rev-parse --git-path <name>` instead. Publish the adoption commit through your normal review. Once it reaches your tracking branch and the checkout is clean, run `./bilibi update`.
 
-Adoption compares your copied `scripts/` with the official maker history. Unmodified older copies adopt cleanly. Customized scripts stop adoption with the exact path, and nothing is overwritten, so you can move such changes into application configuration or propose them to the maker, then retry. An old entry point cannot get a new updater by itself, which is why replacing it with the reviewed bootstrap is this one deliberate step. Reconcile any existing merge conflicts by hand first; do not reset the checkout to make adoption pass.
+First setup checks every retained maker-owned path under `scripts/` against the verified official maker main history. Both the Git blob and file mode must match an official version of that same path. Older copies, later official copies imported without merging ancestry, and officially retired files are supported. A managed path removed from application history without an official deletion precedent also requires an explicit port; setup must not silently restore behavior that the application deliberately removed.
 
-`setup.toml`, `composition/`, `builder.toml`, `rust-toolchain.toml`, `.env`, the product README and application source stay yours. Adoption leaves the copied scripts and workflows in place for inspection, but `./bilibi` no longer runs those scripts. The maker workflows `check.yml` and `release.yml` call scripts only through `./bilibi tooling`, so copy them into your application, replacing workflows that call copied `scripts/` directly, before you remove the frozen copies. Do not merge maker `main` into an adopted application for routine tooling updates. The maker checkout itself has no `maker.toml` and keeps using its own scripts for development.
+A changed managed script stops setup before prerequisites, names the path and prints an inspection command. Port that behavior into application configuration or propose it upstream, then retry; setup does not guess how to preserve changed managed behavior. A failure in this check leaves application files unchanged.
+
+Paths never present in official maker history are application-owned helpers: setup reports and retains them, along with their existing CI callers. There is no blanket permission to trust modified managed tooling. An old entry point cannot get a new updater by itself, which is why replacing it with the reviewed bootstrap is this one deliberate step. Reconcile any existing merge conflicts by hand first; do not reset the checkout to make adoption pass.
+
+`setup.toml`, `composition/`, `builder.toml`, `rust-toolchain.toml`, `.env`, the product README and application source stay yours. Adoption leaves the copied scripts and workflows in place for inspection, but `./bilibi` no longer runs those scripts. Before removing any frozen copies, adapt your existing CI to obtain `tools=$(./bilibi tooling)`, set `BILIBI_TOOL_APPLICATION_ROOT` to the application root, and call managed scripts through `"$tools/scripts/..."`. Keep application-owned helpers at their application paths, and retain their callers, cleanup steps, source credentials and runner/cache choices. Review that CI change separately; copying generic maker workflows over application CI can lose application behavior. Do not merge maker `main` into an adopted application for routine tooling updates. Commands in a checkout without `maker.toml` or `maker.lock` still use local scripts until its first explicit `./bilibi setup`; that command opts into shared tooling.
 
 ## Failures and recovery
 

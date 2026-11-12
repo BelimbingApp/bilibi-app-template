@@ -241,19 +241,27 @@ class UpgradeTest(unittest.TestCase):
         self.git(self.app, 'push')
         self.assertIn('checkout --ours -- setup.toml', self.command('upgrade', ok=False))
 
+    def workspace_upgrade(self):
+        # The fixture's maker.lock is a placeholder, so skip the bootstrap's maker download and
+        # run the upgrade the bootstrap would hand over to once it has selected the recorded maker.
+        result = subprocess.run(['python3', str(self.app / 'scripts/workspace.py'), 'upgrade'], env=self.env,
+                                cwd=self.app, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return result.stdout + result.stderr
+
     def test_adopted_application_merges_no_maker_files(self):
         self.maker_change()
         (self.app / 'maker.lock').write_text('maker = "0"\n')
         self.commit(self.app, 'Adopt')
         self.git(self.app, 'push')
         before = self.snapshot()
-        output = self.command('upgrade')
+        output = self.workspace_upgrade()
         for text in ('maker.lock with ./bilibi update', 'already at its newest release, v0.1.0', 'Nothing was changed'):
             self.assertIn(text, output)
         self.assertEqual(before, self.snapshot())
         self.assertFalse(self.asked.exists())
         platform, finance = self.release_platform('0.2.0', '>=0.2.0, <0.3.0')
-        self.command('upgrade')
+        self.workspace_upgrade()
         self.assertEqual(self.pinned('platform-upgrade-v0.2.0')['platform']['commit'], platform)
         self.assertNotIn('merge commit', self.asked.read_text())
         self.assertIn('Move the Platform to v0.2.0', self.asked.read_text())

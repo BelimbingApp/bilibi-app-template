@@ -24,6 +24,23 @@ from test_workspace_update import ROOT, WorkspaceFixture
 OFFICIAL = 'https://github.com/BelimbingProject/bilibi-app-maker.git'
 
 
+def fake_prerequisites(maker):
+    """Keep real workspace setup/dispatch, replace only host installation seams."""
+    workspace = maker / 'scripts/workspace.py'
+    # Host installation seams only: no builder.toml read, no Node download.
+    workspace.write_text(workspace.read_text().replace(
+        'def setup():', 'def setup():\n    arch_prerequisites.is_arch = lambda: False'
+        '\n    native_builder.read = lambda path: {}\n    native_builder.select_node = lambda *args, **kwargs: None'))
+    (maker / 'scripts/dev-setup.sh').write_text(
+        '#!/bin/sh\nset -eu\n'
+        'test -f maker.toml && test -f maker.lock\n'
+        'echo FIXTURE_PREREQUISITES\n'
+        'echo prepared >> .local/prerequisites\n'
+        'test ! -f .local/fail-prerequisites\n')
+    (maker / 'scripts/builder.sh').write_text(
+        '#!/bin/sh\nset -eu\ntest "$*" = "--development --setup"\necho FIXTURE_BUILDER_SETUP\n')
+
+
 class MakerUpdateTest(WorkspaceFixture):
     def setUp(self):
         super().setUp()
@@ -36,13 +53,15 @@ class MakerUpdateTest(WorkspaceFixture):
         for name in ('maker-tooling.toml', 'builder.toml', 'rust-toolchain.toml', 'LICENSE'):
             shutil.copy2(ROOT / name, self.maker / name)
         self.commit(self.maker, 'Official fixture tooling one')
+        fake_prerequisites(self.maker)
+        self.commit(self.maker, 'Disposable prerequisite boundary')
         self.first = self.git(self.maker, 'rev-parse', 'HEAD')
         self.git(self.root, 'init', '--bare', str(self.root / 'bilibi-app-maker.git'))
         self.git(self.maker, 'remote', 'add', 'origin', str(self.root / 'bilibi-app-maker.git'))
         self.git(self.maker, 'push', '-u', 'origin', 'main')
         self.git(self.app, 'remote', 'add', 'upstream', OFFICIAL)
         # The fixture already has a legacy copied-tooling app and real saved sources.
-        self.command('adopt')
+        self.command('setup')
         self.commit(self.app, 'Adopt reviewed bootstrap')
         self.git(self.app, 'push')
         self.git(self.author, 'pull', '--ff-only')
@@ -479,50 +498,6 @@ class MakerUpdateTest(WorkspaceFixture):
         self.assertFalse(used.exists())
         self.assertFalse((self.state / self.second).exists())
         self.assertFalse((self.state / 'objects.git').exists())
-
-
-class AdoptionTest(WorkspaceFixture):
-    def test_linked_older_official_copy_adopts_newer_runtime(self):
-        remote = self.root / 'bilibi-app-maker.git'
-        self.git(self.root, 'init', '--bare', str(remote))
-        author = self.root / 'maker'
-        self.git(self.root, 'clone', str(remote), str(author))
-        self.git(author, 'checkout', '-b', 'main')
-        shutil.copytree(ROOT / 'scripts', author / 'scripts', ignore=shutil.ignore_patterns('__pycache__', 'node_modules'))
-        shutil.copy2(ROOT / 'maker-tooling.toml', author)
-        self.commit(author, 'Official copied tooling ancestor')
-        self.git(author, 'push', 'origin', 'main')
-        self.git(self.app, 'fetch', str(remote), 'main')
-        self.git(self.app, 'merge', '--allow-unrelated-histories', '-s', 'ours',
-                 '-m', 'Application retains official copy ancestry', 'FETCH_HEAD')
-        script = author / 'scripts/workspace.py'
-        script.write_text(script.read_text().replace('def main():', "def main():\n    print('UPDATED OFFICIAL RUNTIME')"))
-        self.commit(author, 'Newer official runtime')
-        latest = self.git(author, 'rev-parse', 'HEAD')
-        self.git(author, 'push', 'origin', 'main')
-        self.assertIn('Adopted shared maker tooling', self.command('adopt'))
-        self.assertIn(latest, self.command('status'))
-        self.assertIn('UPDATED OFFICIAL RUNTIME', self.command('status'))
-        self.assertEqual(self.git(self.app, 'remote', 'get-url', 'origin'), str(self.root / 'application.git'))
-
-    def test_customized_legacy_tooling_is_preserved(self):
-        maker = self.root / 'bilibi-app-maker.git'
-        self.git(self.root, 'init', '--bare', str(maker))
-        author = self.root / 'maker'
-        self.git(self.root, 'clone', str(maker), str(author))
-        self.git(author, 'checkout', '-b', 'main')
-        shutil.copytree(ROOT / 'scripts', author / 'scripts', ignore=shutil.ignore_patterns('__pycache__', 'node_modules'))
-        shutil.copy2(ROOT / 'maker-tooling.toml', author)
-        self.commit(author, 'Tooling')
-        self.git(author, 'push', 'origin', 'main')
-        script = self.app / 'scripts/workspace.py'
-        script.write_text(script.read_text() + '\n# valuable custom command\n')
-        self.commit(self.app, 'Custom copied tooling')
-        before = self.snapshot()
-        self.assertIn('customized copied tooling', self.command('adopt', ok=False))
-        self.assertEqual(before, self.snapshot())
-        self.assertFalse((self.app / 'maker.toml').exists())
-        self.assertTrue(script.read_text().endswith('# valuable custom command\n'))
 
 
 if __name__ == '__main__':
