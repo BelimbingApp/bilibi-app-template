@@ -60,7 +60,9 @@ subprocess.run(['python3', 'scripts/recipe.py', 'restore'], check=True)
 '''
 
 
-class BuildRecordTest(WorkspaceFixture):
+class BuildFixture(WorkspaceFixture):
+    """An application whose check runs real recipe commands and a stand-in build."""
+
     def setUp(self):
         super().setUp()
         self.env.pop('CI', None)
@@ -90,10 +92,10 @@ class BuildRecordTest(WorkspaceFixture):
             self.git(folder, 'push', 'origin', 'HEAD:refs/heads/new-work')
         return self.git(folder, 'rev-parse', 'HEAD')
 
-    def terminal(self, command, answers):
+    def terminal(self, command, answers, prompt=b'Build with them? (y/n) ', ok=True, args=()):
         master, slave = pty.openpty()
         try:
-            process = subprocess.Popen([str(self.app / 'bilibi'), command], env=self.env,
+            process = subprocess.Popen([str(self.app / 'bilibi'), command, *args], env=self.env,
                                        cwd=self.root, stdin=slave, stdout=slave, stderr=slave)
             os.close(slave)
             slave = None
@@ -110,7 +112,7 @@ class BuildRecordTest(WorkspaceFixture):
                     if not chunk:
                         break
                     output += chunk
-                    prompts = output.count(b'Build with them? (y/n) ')
+                    prompts = output.count(prompt)
                     while count < prompts and count < len(answers):
                         os.write(master, (answers[count] + '\n').encode())
                         count += 1
@@ -119,13 +121,15 @@ class BuildRecordTest(WorkspaceFixture):
             if process.poll() is None:
                 process.kill()
             process.wait()
-            self.assertEqual(process.returncode, 0, output.decode())
+            self.assertEqual(process.returncode == 0, ok, output.decode())
             return output.decode()
         finally:
             os.close(master)
             if slave is not None:
                 os.close(slave)
 
+
+class BuildRecordTest(BuildFixture):
     def test_build_yes_saves_all_three_files_and_builds_new_commits(self):
         head = self.move(self.domain)
         before = self.snapshot()
@@ -249,78 +253,9 @@ class BuildRecordTest(WorkspaceFixture):
         output = self.command('status')
         self.assertEqual(output.count('finance has new commits since the last build.'), 1)
 
-    def test_release_requires_successful_build_for_current_record(self):
-        output = self.command('release', '--tag', 'setup-v1.2.3-test', ok=False)
-        self.assertEqual(output.strip(), 'Run ./bilibi check first.')
-        # An old build-only success must not stand in for the combined check.
-        (self.app / '.local/successful-build').write_text('legacy success\n')
-        self.assertIn('Run ./bilibi check first.', self.command('release', '--tag', 'setup-v1.2.3-test', ok=False))
-        self.command('check')
-        (self.app / 'setup.toml').write_text((self.app / 'setup.toml').read_text() + '# changed after build\n')
-        output = self.command('release', '--tag', 'setup-v1.2.3-test', ok=False)
-        self.assertIn('Commit the successful build record', output)
-
-    def test_release_requires_reviewed_record_and_pushes_existing_workflow_tag(self):
-        head = self.move(self.domain)
-        self.command('check', '--yes')
-        record = self.record()
-        self.assertIn('Commit the successful build record',
-                      self.command('release', '--tag', 'setup-v1.2.3-test', ok=False))
-        self.git(self.app, 'add', *RECORD_FILES)
-        self.git(self.app, 'commit', '-m', 'Record reviewed build')
-        self.git(self.app, 'push', 'origin', 'HEAD:main')
-        output = self.command('release', '--tag', 'setup-v1.2.3-test')
-        self.assertNotIn(f'finance: {self.domain_first[:7]} -> {head[:7]}', output)
-        self.assertEqual(set(self.git(self.app, 'diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD').splitlines()), set(RECORD_FILES))
-        self.assertEqual(self.record(), record)
-        self.assertEqual(self.git(self.app, 'status', '--porcelain'), '')
-        self.assertEqual(self.git(self.root / 'application.git', 'rev-parse', 'refs/tags/setup-v1.2.3-test'),
-                         self.git(self.app, 'rev-parse', 'HEAD'))
-        self.assertIn('already exists here', self.command('release', '--tag', 'setup-v1.2.3-test', ok=False))
-
-    def test_release_refuses_unrelated_staged_unstaged_or_untracked_work(self):
-        self.move(self.domain)
-        self.command('check', '--yes')
-        for mode in ('unstaged', 'staged', 'staged_then_restored', 'untracked'):
-            with self.subTest(mode=mode):
-                path = self.app / ('extra' if mode == 'untracked' else 'notes')
-                original = path.read_bytes() if path.exists() else None
-                path.write_text('Unrelated changes\n')
-                if mode in ('staged', 'staged_then_restored'):
-                    self.git(self.app, 'add', 'notes')
-                if mode == 'staged_then_restored':
-                    path.write_bytes(original)
-                before = self.snapshot()
-                self.assertIn('Commit the successful build record', self.command('release', '--tag', 'setup-v1.2.3', ok=False))
-                self.assertEqual(self.snapshot(), before)
-                self.git(self.app, 'restore', '--staged', 'notes')
-                if original is None:
-                    path.unlink()
-                else:
-                    path.write_bytes(original)
-
-    def test_release_with_committed_record_does_not_make_empty_commit(self):
-        self.command('check')
-        self.git(self.app, 'push', 'origin', 'HEAD:main')
-        before = self.git(self.app, 'rev-parse', 'HEAD')
-        self.command('release', '--tag', 'setup-v2.0.0-test')
-        self.assertEqual(self.git(self.app, 'rev-parse', 'HEAD'), before)
-
-    def test_release_rejects_remote_tag_before_committing(self):
-        self.git(self.author, 'tag', 'setup-v1.0.0')
-        self.git(self.author, 'push', 'origin', 'refs/tags/setup-v1.0.0')
-        self.move(self.domain)
-        self.command('check', '--yes')
-        self.git(self.app, 'add', *RECORD_FILES)
-        self.git(self.app, 'commit', '-m', 'Record reviewed build')
-        self.git(self.app, 'push', 'origin', 'HEAD:main')
-        before = self.snapshot()
-        self.assertIn('already exists on origin', self.command('release', '--tag', 'setup-v1.0.0', ok=False))
-        self.assertEqual(self.snapshot(), before)
-
     def test_help_lists_release_and_yes(self):
         help_text = self.command('help')
-        self.assertIn('release --tag setup-vX.Y.Z', help_text)
+        self.assertIn('release --tag setup-vX.Y.Z --yes', help_text)
         self.assertIn('check --yes', help_text)
         self.assertNotIn('build --yes', help_text)
         self.assertNotIn('  build ', help_text)

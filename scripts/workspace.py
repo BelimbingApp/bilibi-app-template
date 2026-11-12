@@ -19,6 +19,7 @@ import uuid
 
 import arch_prerequisites
 import choose as guide
+import github_release
 import native_builder
 import platform_upgrade
 import recipe
@@ -833,8 +834,10 @@ def check(yes=False):
         mark_successful_check(candidate)
 
 
-def release(tag):
-    publish.validate_tag(tag)
+def release_checks(tag=None):
+    """The local half of ./bilibi release: a clean, checked, reviewed record. Returns (repository, branch)."""
+    if tag:
+        publish.validate_tag(tag)
     # Refuse unrelated staged, unstaged, renamed, deleted and untracked files.
     changed = set(run('git', 'diff', '--name-only', '-z', 'HEAD', capture=True).split('\0'))
     changed.update(run('git', 'diff', '--cached', '--name-only', '-z', capture=True).split('\0'))
@@ -846,8 +849,8 @@ def release(tag):
     if not successful_check_matches():
         raise ValueError('Run ./bilibi check first.')
     recipe.check_record()
-    publish.check_new_tag(tag, ROOT)
-    publish.start_release(tag, ROOT)
+    repository = github_release.repository_name(remote_url('origin'), GITHUB_ORIGIN)
+    return repository, publish.require_default_branch(ROOT)
 
 
 def record_fingerprint(root):
@@ -901,7 +904,7 @@ def save_record(candidate, observed, before):
             (ROOT / name).write_bytes(data)
         raise
     print('Saved the checked build versions. Commit and review this record on the default branch, '
-          'then run ./bilibi release --tag setup-vX.Y.Z.')
+          'then run ./bilibi release.')
 
 
 def check_staged():
@@ -921,13 +924,16 @@ def main():
     parser.add_argument('--kind', choices=('domains', 'extensions'), help='add: component mount kind; give with --source and --commit')
     parser.add_argument('--source', help='add: official BelimbingProject repository URL from Software')
     parser.add_argument('--commit', help='add: exact full lowercase commit ID from Software')
-    parser.add_argument('--yes', action='store_true', help='check: use all new pushed commits without asking')
-    parser.add_argument('--tag', help='release: a new version, such as setup-v1.0.0')
+    parser.add_argument('--yes', action='store_true', help='check: use all new pushed commits without asking; '
+                        'release: release --tag without asking')
+    parser.add_argument('--tag', help='release: the version, such as setup-v1.0.0 (default: suggested)')
     args = parser.parse_args()
-    if args.yes and args.command != 'check':
-        parser.error('--yes is only for ./bilibi check')
-    if (args.command == 'release') != (args.tag is not None):
-        parser.error('Use ./bilibi release --tag setup-vX.Y.Z; --tag is only for release')
+    if args.yes and args.command not in ('check', 'release'):
+        parser.error('--yes is only for ./bilibi check and ./bilibi release')
+    if args.tag is not None and args.command != 'release':
+        parser.error('--tag is only for ./bilibi release')
+    if args.command == 'release' and args.yes and args.tag is None:
+        parser.error('Use ./bilibi release --tag setup-vX.Y.Z --yes to release without asking')
     supplied = (args.kind is not None, args.source is not None, args.commit is not None)
     if any(supplied) and args.command != 'add':
         parser.error('--kind, --source and --commit are only for ./bilibi add')
@@ -967,10 +973,10 @@ def main():
               '  check         Choose versions, then build and test against an empty test\n'
               '                database, and save the successful release record.\n'
               '                For scripts, use check --yes to accept new commits.\n'
-              '  release --tag setup-vX.Y.Z\n'
-              '                After committing and reviewing the checked record, start the\n'
-              '                release on GitHub.\n'
-              '                docs/guides/releasing.md explains the final publish step.\n\n'
+              '  release       After committing and reviewing the checked record: suggest\n'
+              '                the next version, push its tag, wait for the GitHub build,\n'
+              '                publish it and download the file to upload on Software.\n'
+              '                For scripts, use release --tag setup-vX.Y.Z --yes.\n\n'
               'Stay current with the maker\n'
               '  upgrade       Move the Platform and official Domains and Extensions to the newest\n'
               '                recommended release, show its upgrade notes and, without maker.lock,\n'
@@ -991,16 +997,19 @@ def main():
     local.mkdir(exist_ok=True)
     with (local / 'workspace.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        if args.command == 'add':
+        if args.command == 'release':
+            repository, branch = release_checks(args.tag)
+        elif args.command == 'add':
             add(args.component, args.kind, args.source, args.commit)
         elif args.command == 'own':
             own(args.component)
         elif args.command == 'check':
             check(args.yes)
-        elif args.command == 'release':
-            release(args.tag)
         else:
             globals()[args.command]()
+    if args.command == 'release':
+        # The tagged commit is fixed now; waiting for GitHub must not block start or status.
+        github_release.release(TOOLS, ROOT, repository, branch, args.tag, args.yes)
 
 
 if __name__ == '__main__':

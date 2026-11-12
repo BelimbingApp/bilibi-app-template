@@ -64,7 +64,7 @@ Run commands from the application's root folder. `./bilibi help` shows the same 
 | `./bilibi update` | Moves `maker.lock` to the newest maker (listing its commits), then gets your team's changes and restores the saved source versions. `--back` or `--to <commit>` returns to an earlier maker. | Before you start work, to match your team |
 | `./bilibi upgrade` | Merges the maker's files (applications without `maker.lock`), moves the Platform and the official Domains and Extensions to the newest recommended release, and opens one pull request with the upgrade notes for agents | When the maker or the Platform has a new release; see [Take maker updates](maker-updates.md#staying-current-with-upgrade) |
 | `./bilibi check` | Asks about new commits, builds and tests against an empty test database, then saves your choices if it passes. | Before a release |
-| `./bilibi release --tag setup-vX.Y.Z` | Requires the committed successful build record and starts the GitHub release workflow. Refuses other uncommitted application files, or a record that has no successful check. | After check passes |
+| `./bilibi release` | Suggests the next version, pushes its tag, waits for the GitHub build, publishes the release, downloads and checks the archive, and prints what to upload on the Software page. Refuses uncommitted files, a record without a successful check, a copy behind the default branch, or a default branch whose check for this commit has not passed. | After check passes and the record is merged |
 | `./bilibi setup` | Installs the tools and fetches the sources, without starting | When you want everything ready in advance |
 | `./bilibi help` | Shows the command list | Any time |
 
