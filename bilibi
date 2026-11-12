@@ -424,9 +424,6 @@ def main():
         os.execv(sys.executable, [sys.executable, str(ROOT / 'scripts/workspace.py'), *command])
     hook = command == ['check-staged']
     try:
-        if command[:1] == ['upgrade']:
-            raise ValueError('This application has adopted shared maker tooling; use ./bilibi update. '
-                             './bilibi upgrade merges maker files and would undo the adoption.')
         trusted()
         location = Path(git('rev-parse', '--git-path', 'bilibi-maker'))
         state = location if location.is_absolute() else ROOT / location

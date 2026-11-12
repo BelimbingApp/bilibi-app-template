@@ -34,16 +34,22 @@ Leave `./bilibi start` running; it rebuilds and reloads when the code changes. R
 
 Setup records the official maker in `maker.toml` and `maker.lock`, then prepares sources and prerequisites such as Rust, PostgreSQL and Node. It does not build, start services or migrate a database. Repeated setup uses the same lock; `./bilibi update` deliberately takes newer maker and application versions. The first start builds Bilibi, so it takes a while. On the first start, Bilibi opens in your browser at the sign-in page. Later starts print its address. Sign in as `ai@agent.my` / `bilibi-dev`. You now have the Platform on its own: sign-in, companies, people, users, permissions and audit.
 
-2. Add the business features you want. A Domain is one business area, such as Finance:
+2. Add the business features you want. A Domain is one business area, such as Finance; an Extension adapts or connects one. The first `./bilibi start` lists them, with a line about each, before it builds anything. Move with the arrow keys and tick with space, or type an item's number, then press Enter and `y` to add them. To see the list again later:
+
+```sh
+./bilibi choose
+```
+
+If you already know the name, add it directly and start again:
 
 ```sh
 ./bilibi add finance
 ./bilibi start
 ```
 
-The **Software** page in Bilibi lists what is available, and shows the exact `add` command for each one.
+The **Software** page in Bilibi lists the same Domains and Extensions, and shows the exact `add` command for each one.
 
-3. Make it yours. Create an empty private repository on GitHub, for example `your-company/my-bilibi`. Before you push, choose your application's licence. A private application usually starts with `Copyright (c) <year> <owner>. All rights reserved.` in its root `LICENSE`; an open-source application should use a licence you choose. The maker's MIT licence is not your application's licence, so keep it separately. If your copy still has a root `LICENSE` (you cloned the maker directly), move it with:
+3. Make it yours. Your application gets its own private repository on GitHub, for example `your-company/my-bilibi`. Before you push, choose your application's licence. A private application usually starts with `Copyright (c) <year> <owner>. All rights reserved.` in its root `LICENSE`; an open-source application should use a licence you choose. The maker's MIT licence is not your application's licence, so keep it separately. If your copy still has a root `LICENSE` (you cloned the maker directly), move it with:
 
 ```sh
 mkdir -p licenses
@@ -57,31 +63,50 @@ git add LICENSE licenses
 git commit -m "Set application licence"
 ```
 
-Then connect your repository and push:
+Then make the repository yours with one command. It needs the [GitHub CLI](https://cli.github.com/) (`gh`), signed in with `gh auth login`:
 
 ```sh
-git remote rename origin upstream
-git remote add origin https://github.com/your-company/my-bilibi.git
-gh repo set-default your-company/my-bilibi
-git add bilibi maker.toml maker.lock
-git commit -m "Adopt versioned shared maker tooling"
-git push -u origin main
+./bilibi own your-company/my-bilibi
 ```
 
-Your folder now has two remotes. `origin` is your application, where you push. `upstream` is the maker. `./bilibi update` takes its later tooling improvements without merging maker files, and records the maker version in `maker.lock`. An application that still carries copied maker files uses `./bilibi upgrade` instead, which merges them through one pull request. See [Take maker updates](docs/guides/maker-updates.md).
+```text
+Step 1 of 3: your repository your-company/my-bilibi on GitHub
+  $ gh repo create your-company/my-bilibi --private
+Step 2 of 3: point origin at your repository and keep the maker as upstream
+  $ git remote rename origin upstream
+  $ git remote set-url upstream https://github.com/BelimbingProject/bilibi-app-maker.git
+  $ git remote add origin https://github.com/your-company/my-bilibi.git
+  $ gh repo set-default your-company/my-bilibi
+Step 3 of 3: push main to your repository
+  $ git push --set-upstream origin main
+```
+
+Each step prints the command it runs, so you can see what happened. If `your-company/my-bilibi` already exists and is empty, `own` uses it instead of creating it; if it already has commits, `own` stops, so nothing there is overwritten. `gh repo set-default` matters more than it looks: without it, `gh` would open your later pull requests against the maker. If a step fails, fix the cause it shows and run the same command again; it finishes the remaining steps.
+
+`own` is for a fresh clone. If `origin` already points somewhere other than the maker, it changes nothing and prints the commands to connect your repository by hand.
+
+Now adopt the maker's shared tooling, and push that too:
+
+```sh
+./bilibi setup
+git add bilibi maker.toml maker.lock
+git commit -m "Adopt versioned shared maker tooling"
+git push
+```
+
+Your folder now has two remotes. `origin` is your application, where you push. `upstream` is the maker. `./bilibi update` takes its later tooling improvements without merging maker files, and records the maker version in `maker.lock`. `./bilibi upgrade` moves the Platform to its newest recommended release, and in an application that still carries copied maker files it also merges them, through one pull request. See [Take maker updates](docs/guides/maker-updates.md).
 
 > [!WARNING]
 > Clone the maker as shown. A copy made any other way, such as a downloaded ZIP file, has none of the maker's history. First setup requires a Git checkout and verifies retained managed scripts against official maker history. Customized managed scripts need an explicit port before setup can continue.
 
-4. Build and release the versions you tested. Commit and push changes in each part's own repository first. These commands use the pinned native build tools:
+4. Check and release the versions you tested. Commit and push changes in each part's own repository first. Check uses supported installed Node, with automatic private fallback; GitHub builds releases with pinned tools. Provide a separate empty PostgreSQL 18 database for check (see the release guide):
 
 ```sh
-./bilibi build
-./bilibi release --tag setup-v1.0.0
+./bilibi check
+./bilibi release
 ```
 
-Build asks about each part with new commits. Say yes to use them and save the build record only after the build succeeds, or no to build its saved version. Commit the successful build record and merge it into your application's default branch. Release then creates the protected tag and starts the GitHub release build. GitHub uses exactly those reviewed versions.
-To install it on a server, follow [Release your setup](docs/guides/releasing.md#release-your-setup) and [Install a release](docs/guides/installing.md#install-a-release).
+Check asks about each part with new commits. Say yes to use them and save the build record only after all checks pass, or no to build its saved version. Commit the successful build record and merge it into your application's default branch. Release then suggests the next version, pushes its tag, waits for GitHub to build exactly those reviewed versions, publishes the release, and prints the file to upload on each server's Software page. [Release your setup](docs/guides/releasing.md#release-your-setup) and [Install a release](docs/guides/installing.md#install-a-release) explain each step.
 
 ## Guides
 
@@ -89,8 +114,8 @@ To install it on a server, follow [Release your setup](docs/guides/releasing.md#
 - [Running your application](docs/guides/running.md): requirements, workspace, commands and commit safeguards.
 - [Releasing your application](docs/guides/releasing.md): build, check and release your application.
 - [Installing a release](docs/guides/installing.md): put a tested release on Staging and Production.
-- [Private sources](docs/guides/private-sources.md): give checks access to private repositories.
-- [Taking maker updates](docs/guides/maker-updates.md): `./bilibi update` for adopted applications (`maker.lock`, going back, one-time adoption, recovery) and `./bilibi upgrade` for merging maker files.
+- [Private sources](docs/guides/private-sources.md): `./bilibi connect-private-sources` lets checks read your private Domains and Extensions.
+- [Taking maker updates](docs/guides/maker-updates.md): `./bilibi update` for adopted applications (`maker.lock`, going back, one-time adoption, recovery) and `./bilibi upgrade` for merging maker files and moving the Platform.
 - [Application repositories](docs/guides/about.md): where changes belong and what the maker provides.
 
 ## File length

@@ -22,21 +22,18 @@ Bilibi has three kinds of repository:
 | [`bilibi`](https://github.com/BelimbingProject/bilibi) | Bilibi's source code: the Platform | Change Bilibi itself, or build a Domain or Extension for everyone |
 | Your application, such as `your-company/my-bilibi` | One product: the Bilibi, Domain and Extension versions it uses, and its releases | Work on your product, once you have made it |
 
-You clone the maker, and your clone becomes your application. It keeps the maker's working parts as they are, such as the `./bilibi` commands, the checks and the release scripts. You replace its sample parts with your own, such as the `YOUR-ORGANISATION` names in these guides. After one-time adoption, shared tooling is a versioned dependency invoked by the standalone root bootstrap. `maker.lock` records the maker version, and `./bilibi update` moves it to the newest maker before updating the application and its saved component set. An application that still carries copied maker files takes maker changes with `./bilibi upgrade`, which merges them through one pull request: see [Take maker updates](maker-updates.md).
+You clone the maker, and your clone becomes your application. It keeps the maker's working parts as they are, such as the `./bilibi` commands, the checks and the release scripts. You replace its sample parts with your own, such as the `YOUR-ORGANISATION` names in these guides. After one-time adoption, shared tooling is a versioned dependency invoked by the standalone root bootstrap. `maker.lock` records the maker version, and `./bilibi update` moves it to the newest maker before updating the application and its saved component set. `./bilibi upgrade` moves the Platform to its newest recommended release, and in an application that still carries copied maker files it also merges them, all through one pull request: see [Take maker updates](maker-updates.md).
 
 If you started in `bilibi` instead, `./bilibi new <name>` there turns what you built into an application like this one.
 
 ## What the maker will do
 
-Today the maker gives you a running Bilibi and the commands to build, check and release it. Some steps are still manual, such as making the clone your own or connecting private Domains. The maker will take these over, one command each:
+Today the maker gives you a running Bilibi, a list to choose its business features from (`./bilibi choose`, also offered on the first start), and the commands to build, check and release it. Making the clone yours takes one command, `./bilibi own <owner/name>` (see [Start here](../../README.md#start-here)), and connecting private Domains and Extensions takes another, `./bilibi connect-private-sources` (see [Private sources](private-sources.md)). The maker will take over the remaining manual steps, one command each:
 
 | Step | Today | Planned |
 | --- | --- | --- |
-| Choose business features | `./bilibi add <name>`, if you know the name | Pick from a list ([#11](https://github.com/BelimbingProject/bilibi-app-maker/issues/11)) |
-| Make it yours | Four Git commands, in [Start here](../../README.md#start-here) | `./bilibi own <owner/name>` ([#12](https://github.com/BelimbingProject/bilibi-app-maker/issues/12)) |
-| Use private Domains | Set up a GitHub App by hand, in [Private sources](private-sources.md#private-sources) | One command ([#13](https://github.com/BelimbingProject/bilibi-app-maker/issues/13)) |
-| Release and install | `./bilibi release --tag setup-vX.Y.Z` starts the release; [publish the draft and install it](releasing.md#release-your-setup) | Combine the remaining steps ([#14](https://github.com/BelimbingProject/bilibi-app-maker/issues/14)) |
-| Stay current | `./bilibi update` moves `maker.lock` to the newest maker, then updates the application and saved source versions; you publish `maker.lock` in a pull request. `./bilibi upgrade` merges maker files into an application that has not adopted shared tooling | Automatic component recommendations and upgrade notes remain separate work ([#15](https://github.com/BelimbingProject/bilibi-app-maker/issues/15)) |
+| Release and install | `./bilibi release` suggests the version, pushes the tag, waits for the build, publishes it and tells you what to upload on the Software page | Nothing more planned |
+| Stay current | `./bilibi update` moves `maker.lock` to the newest maker, then updates the application and saved source versions; you publish `maker.lock` in a pull request. `./bilibi upgrade` merges maker files into an application that has not adopted shared tooling, and moves the Platform with its official Domains and Extensions to the newest recommended release, showing the upgrade notes for agents, in one pull request | Nothing more planned |
 
 ## Where to go next
 

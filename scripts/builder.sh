@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Every local and CI build enters the same pinned native environment.
+# CI/artifacts use pinned tools; --development may use installed supported Node.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd -P)
 exec python3 "$root/scripts/native_builder.py" "$@"
