@@ -44,6 +44,8 @@ The private sources must belong to the same account as your application reposito
 
 After that, the next check on GitHub reads the private sources. If a check already failed at "Materialize exact sources", run it again from its page on GitHub.
 
+To confirm it worked, open the Actions tab of your application repository and re-run the latest "Check setup" run on `main`. When "Materialize exact sources" passes, the App works. If it fails with an access error, check on the Installed GitHub Apps page that the App is installed on every private source the command listed.
+
 ## Why a GitHub App?
 
 The checks on GitHub start with a token that reads only your application repository, so they cannot read another private repository. A GitHub App fixes this without storing a long-lived token: **each check mints its own token, which reads only the repositories the App is installed on, expires within the hour and is revoked when the check ends.**
