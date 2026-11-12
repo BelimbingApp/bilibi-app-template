@@ -21,7 +21,7 @@ maker.lock now records maker commit 8c41d07a… (2 in, 0 out). Commit it and ope
 
 Notice what happened, in order. Before any new maker code ran, update listed the maker commits it was about to bring in, with a link that shows the full difference on GitHub. Then it installed that maker version, fast-forwarded your application to your team's latest pushed commit, and restored the Platform, Domain and Extension commits saved in `setup.toml`. Finally it wrote the new maker commit into `maker.lock`, which is now an uncommitted change in your checkout.
 
-Notice also what did **not** happen: update did not push, did not open a pull request, and did not choose new Platform or Domain versions (that is still `./bilibi check`).
+Notice also what did **not** happen: update did not push, did not open a pull request, and did not choose new Platform or Domain versions (that is `./bilibi upgrade`, or `./bilibi check` for versions you choose yourself).
 
 You may already have questions: why a file has to be committed, what runs in CI meanwhile, and what to do when a new maker version breaks something. We cover each of these below.
 
@@ -31,11 +31,11 @@ There are two ways to take maker changes. They suit different applications:
 
 | | `./bilibi update` | `./bilibi upgrade` |
 | --- | --- | --- |
-| For | An application that has done the [one-time adoption](#one-time-adoption): it has `maker.toml` and `maker.lock` | An application that still carries copied maker files and has not adopted shared tooling |
-| How | Moves `maker.lock` to the newest maker; no maker files are merged | Merges the maker's `main` into a new branch and opens one pull request |
-| Result | One changed file, `maker.lock`, in your checkout, which you commit in a pull request | A pull request containing the maker's file changes |
+| For | An application that has done the [one-time adoption](#one-time-adoption): it has `maker.toml` and `maker.lock` | Every application. The maker files are merged only in one that still carries copied maker files |
+| How | Moves `maker.lock` to the newest maker; no maker files are merged | Merges the maker's `main` into a new branch, moves the Platform to its newest recommended release, and opens one pull request |
+| Result | One changed file, `maker.lock`, in your checkout, which you commit in a pull request | A pull request with the maker's file changes, the new Platform versions and the upgrade notes for agents |
 
-If your application has `maker.lock`, use `update`; `./bilibi upgrade` stops there and says so. If it has not adopted yet, `upgrade` keeps it current until you adopt.
+If your application has `maker.lock`, take maker updates with `update`, and use `upgrade` to move the Platform. If it has not adopted yet, `upgrade` does both until you adopt.
 
 ## Why maker.lock?
 
@@ -102,26 +102,61 @@ The maker versions live inside your checkout Git folder, at `git rev-parse --git
 > [!WARNING]
 > Git settings in your own configuration, such as a proxy or `http.sslVerify=false`, also apply to these downloads, just as they do for `git clone`. Do not point Git URL rewrites at servers you do not trust.
 
-## Merging maker files with upgrade
+## Staying current with upgrade
 
-Applications that have not adopted shared tooling take maker changes with one command and one pull request you can review. From your default branch, such as `main`:
+`./bilibi upgrade` keeps your application current in one pull request: it merges the maker's newest files, and it moves the Platform to its newest recommended release, together with the official Domains and Extensions that go with it. From your default branch, such as `main`:
 
 ```sh
 ./bilibi upgrade
 ```
 
-It does four things:
+```text
+Moves the Platform to its newest recommended release, with the official Domains and Extensions:
+
+- Platform -> v0.3.0 (5b1c0e9d2a47)
+- finance -> 0.3.0 (8d20f61ab3c4)
+- shop_rules: not an official component, so it stays at 41ac9e07b2d5; its owner updates it using the upgrade notes below
+
+The saved build record (setup.toml and composition/) is pinned to these versions. CI builds and tests them on this pull request.
+
+## Upgrade notes for agents
+
+### Platform v0.2.0
+...
+### Platform v0.3.0
+...
+Opened one pull request: Merge maker updates (1ab6321) and move the Platform to v0.3.0. Review it, then merge it with a merge commit, not a squash. After it merges, run ./bilibi update.
+```
+
+Notice what happened. Upgrade showed the new versions and the upgrade notes for agents from every Platform release it crossed, here v0.2.0 and v0.3.0, before it opened the pull request. The same notes are in the pull request, so you, or the agent you work with, can update your own Domains and Extensions there. Notice also what did **not** happen: nothing was built, and nothing from the maker or the Platform ran on your computer. CI builds and tests the new versions on the pull request.
+
+In order, upgrade does these things:
 
 1. **Checks that it is safe to start.** Your checkout must have no uncommitted work and be level with `origin`, `upstream` must be exactly `https://github.com/BelimbingProject/bilibi-app-maker.git`, and the GitHub CLI (`gh`) must be installed and signed in. Otherwise it stops, changes nothing, and prints what to fix.
-2. **Merges on a new branch.** It fetches the maker's `main`, creates a branch such as `maker-upgrade-1ab6321`, named after the maker commit, and merges the maker into it.
-3. **Opens one pull request.** It pushes the branch to `origin` and opens a pull request in your repository. The description lists the maker commits and links to the same changes in the maker.
-4. **Returns you to your default branch**, unchanged.
+2. **Chooses the new Platform versions.** It reads the Platform catalogue, the list of releases that the Bilibi team publishes, and picks the newest Platform release. For each official Domain and Extension in `setup.toml`, it picks the newest release that supports that Platform release, preferring one the Bilibi team tested with it.
+3. **Pins them.** It writes the new versions into `setup.toml` and `composition/`, the same saved build record that `./bilibi check` writes, but without building. It uses the tooling you already have, never the maker files it is about to merge.
+4. **Merges on a new branch.** It creates a branch, such as `maker-upgrade-1ab6321` named after the maker commit, commits the Platform move on it, and then merges the maker's `main`.
+5. **Opens one pull request** in your repository, pushes the branch to `origin`, and returns you to your default branch, unchanged. The description lists the maker commits, links to the same changes in the maker, and includes the upgrade notes.
 
-Nothing from the maker runs on your computer during the upgrade. **Merge that pull request with a merge commit, not a squash.** A squash drops the link to the maker, and the next upgrade brings the same changes in again. When there is nothing new, upgrade says "Already up to date with the maker" and changes nothing.
+**Merge that pull request with a merge commit, not a squash.** A squash drops the link to the maker, and the next upgrade brings the same changes in again.
 
-If the merge stops on a conflict, upgrade stops on the new branch before pushing and lists the conflicted files. Keep what you need from both sides (for `setup.toml` and `composition/`, keep yours), run `git add --all` and `git commit --no-edit`, then run `./bilibi upgrade` again. The message also prints the commands that undo the merge.
+### When the Platform stays
 
-Upgrade does not move the Platform, Domains and Extensions in `setup.toml` to newer releases; choose new versions with `./bilibi check`, as [Releasing your application](releasing.md) explains.
+Upgrade never moves a part back, and it moves the Platform only together with its official Domains and Extensions. So the Platform stays at its saved commit, with a message saying why, when:
+
+- it is already at, or past, the newest release, for example on an unreleased commit newer than the release;
+- an official Domain or Extension in your application has no release for the new Platform yet;
+- your saved commit is not in the history of the release, or the Platform comes from a repository that is not official.
+
+Domains and Extensions that are not in the catalogue, such as your own, keep their saved commits. Their owners update them using the upgrade notes. When neither the maker nor the Platform has anything new, upgrade says so and changes nothing.
+
+### When the merge stops on a conflict
+
+If the merge stops on a conflict, upgrade stops on the new branch before pushing and lists the conflicted files. Keep what you need from both sides (for `setup.toml` and `composition/`, keep yours, which already holds the new Platform versions), run `git add --all` and `git commit --no-edit`, then run `./bilibi upgrade` again. The message also prints the commands that undo the merge.
+
+### Applications with maker.lock
+
+An application that has done the [one-time adoption](#one-time-adoption) takes maker updates with `./bilibi update` instead, so upgrade merges no maker files there. It still moves the Platform, on a branch such as `platform-upgrade-v0.3.0`, in one pull request with the upgrade notes.
 
 ## One-time adoption
 

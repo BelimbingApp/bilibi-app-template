@@ -20,6 +20,7 @@ import uuid
 import arch_prerequisites
 import choose as guide
 import native_builder
+import platform_upgrade
 import recipe
 import publish
 
@@ -320,42 +321,94 @@ def remote_url(name):
                           stderr=subprocess.DEVNULL, check=False).stdout.strip()
 
 
-def upgrade_request(repository, default, branch):
-    """The maker commits, where to compare them, and how to merge: all an owner needs to review."""
-    base, tip = (run('git', 'rev-parse', name, capture=True).strip() for name in ('HEAD^1', 'HEAD^2'))
-    fork = run('git', 'merge-base', base, tip, capture=True).strip()
-    commits = run('git', 'log', '--oneline', f'{base}..{tip}', capture=True).splitlines()
-    listed = commits[:200] + ([f'... and {len(commits) - 200} more'] if len(commits) > 200 else [])
-    # A code block: "#12" and "@name" in maker subjects must not link into this repository.
-    body = ('Merges the maker\'s improvements into this application.\n\n'
-            '**Merge this pull request with a merge commit, not a squash.** A squash drops the link to the '
-            'maker, and the next upgrade would bring the same changes in again.\n\n'
-            f'Maker commits ({len(commits)}):\n\n```\n' + '\n'.join(listed) + '\n```\n\n'
-            f'Compare in the maker: {MAKER.removesuffix(".git")}/compare/{fork}...{tip}\n')
-    by_hand = (f'open https://github.com/{repository}/compare/{default}...{branch}?expand=1 yourself, '
-               'and merge the pull request with a merge commit, not a squash')
+def pin(moved):
+    """The three record files for moved versions, prepared in a candidate as ./bilibi check does, without a build.
+
+    The candidate uses the tooling that is running now: the reviewed default branch, or the
+    maker.lock tooling. Nothing just fetched from the maker is run."""
+    BUILD.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=BUILD.name + '-upgrade-', dir=BUILD.parent) as temp:
+        candidate = Path(temp)
+        copy_build_files(candidate)
+        (candidate / 'setup.toml').write_text(serialize({'domains': [], 'extensions': [], **moved}))
+        env = candidate_environment()
+        env['BILIBI_BUILD_DIR'] = str(BUILD)
+        try:
+            subprocess.run(['python3', str(candidate / 'scripts/recipe.py'), 'materialize'], env=env, check=True)
+            subprocess.run(['bash', str(candidate / 'scripts/builder.sh'), '--development', 'python3',
+                            'scripts/recipe.py', 'record-candidate'], env=env, check=True)
+            recipe.check_record(candidate)
+        except (ValueError, subprocess.CalledProcessError) as error:
+            raise ValueError(f'{ROOT}: cannot pin the new Platform versions ({error}); nothing was changed. Fix the '
+                             'cause shown above, then rerun ./bilibi upgrade') from error
+        return {name: (candidate / name).read_bytes() for name in RECORD_FILES}
+
+
+def upgrade_request(repository, default, branch, published):
+    """What the upgrade brings, where to compare it, and how to merge: all an owner needs to review."""
+    sections, titles = [], []
+    merges = run('git', 'rev-list', '--merges', '--parents', f'{published}..HEAD', capture=True).split()
+    if merges:
+        # The newest merge on the branch is the maker's tip; its first parent is this application.
+        tip = merges[2]
+        fork = run('git', 'merge-base', published, tip, capture=True).strip()
+        commits = run('git', 'log', '--oneline', f'{published}..{tip}', capture=True).splitlines()
+        listed = commits[:200] + ([f'... and {len(commits) - 200} more'] if len(commits) > 200 else [])
+        # A code block: "#12" and "@name" in maker subjects must not link into this repository.
+        sections.append('Merges the maker\'s improvements into this application.\n\n'
+                        '**Merge this pull request with a merge commit, not a squash.** A squash drops the link to the '
+                        'maker, and the next upgrade would bring the same changes in again.\n\n'
+                        f'Maker commits ({len(commits)}):\n\n```\n' + '\n'.join(listed) + '\n```\n\n'
+                        f'Compare in the maker: {MAKER.removesuffix(".git")}/compare/{fork}...{tip}\n')
+        titles.append(f'Merge maker updates ({tip[:7]})')
+    old, _ = recipe.validate_recipe(tomllib.loads(run('git', 'show', f'{published}:setup.toml', capture=True)))
+    new, _ = recipe.recipe()
+    if old['platform'] != new['platform']:
+        with tempfile.TemporaryDirectory(prefix='bilibi-platform-') as folder:
+            text = platform_upgrade.report(old, new, platform_upgrade.Objects(folder))
+        sections.append(text)
+        crossed = re.findall(r'^### Platform (v\S+)$', text, re.M)
+        titles.append(f'move the Platform to {crossed[-1]}' if crossed else 'move the Platform')
+    if not titles:
+        raise ValueError(f'{ROOT}: branch {branch} brings nothing new; run {git_step(ROOT, "switch", default)} '
+                         'and rerun ./bilibi upgrade')
+    title = ' and '.join(titles)
+    title = title[0].upper() + title[1:]
+    merge_note = ', and merge it with a merge commit, not a squash' if merges else ''
+    by_hand = f'open https://github.com/{repository}/compare/{default}...{branch}?expand=1 yourself{merge_note}'
     try:
         run('git', 'push', '--set-upstream', 'origin', branch)
     except subprocess.CalledProcessError as error:
-        raise ValueError(f'{ROOT}: the merge is ready on branch {branch}, but the push to origin failed; fix the '
+        raise ValueError(f'{ROOT}: the upgrade is ready on branch {branch}, but the push to origin failed; fix the '
                          f'cause shown above, then rerun ./bilibi upgrade from this branch') from error
-    title = f'Merge maker updates ({tip[:7]})'
     opened = subprocess.run(['gh', 'pr', 'create', '--repo', repository, '--base', default, '--head', branch,
-                             '--title', title, '--body', body], cwd=ROOT, check=False).returncode == 0
+                             '--title', title, '--body', '\n'.join(sections)], cwd=ROOT, check=False).returncode == 0
     run('git', 'switch', default)
     if not opened:
         raise ValueError(f'{ROOT}: branch {branch} is pushed, but the pull request was not opened; {by_hand}')
-    print(f'Opened one pull request with {len(commits)} maker commit(s). Review it, then merge it with a merge '
-          f'commit, not a squash. After it merges, run ./bilibi update.')
+    print(f'Opened one pull request: {title}. Review it, then merge it{merge_note.removeprefix(", and merge it")}. '
+          'After it merges, run ./bilibi update.')
+
+
+def upgrade_platform():
+    """The moved setup and the record files to commit, or None when the Platform stays."""
+    saved, _ = recipe.recipe()
+    with tempfile.TemporaryDirectory(prefix='bilibi-platform-') as folder:
+        objects = platform_upgrade.Objects(folder)
+        moved, lines, release = platform_upgrade.plan(saved, objects)
+        if moved is None:
+            print(lines[0])
+            return None
+        # The terminal shows every note in full; the pull request links any that are too long for GitHub.
+        print(platform_upgrade.report(saved, moved, objects, lines, limit=None), flush=True)
+    return moved, pin(moved), release
 
 
 def upgrade():
-    """Merge the maker's reviewed-by-pull-request updates; never run what was just fetched."""
-    if (ROOT / 'maker.lock').exists():
-        raise ValueError(f'{ROOT}: this application has adopted shared maker tooling (maker.lock), so it takes maker '
-                         'updates with ./bilibi update; ./bilibi upgrade merges maker files and would undo the adoption')
+    """Merge the maker's reviewed-by-pull-request updates and move the Platform; never run what was just fetched."""
+    adopted = (ROOT / 'maker.lock').exists()
     update_clean(ROOT, command='upgrade')
-    if remote_url('upstream') != MAKER:
+    if not adopted and remote_url('upstream') != MAKER:
         action = 'set-url' if remote_url('upstream') else 'add'
         raise ValueError(f'{ROOT}: the upstream remote must be exactly {MAKER}; inspect with '
                          f'{git_step(ROOT, "remote", "-v")}, then run {git_step(ROOT, "remote", action, "upstream", MAKER)} '
@@ -378,53 +431,69 @@ def upgrade():
         raise ValueError(f'{ROOT}: origin has no default branch yet; push your application first '
                          '(see "Start here" in README.md), then rerun ./bilibi upgrade')
     branch = run('git', 'branch', '--show-current', capture=True).strip()
-    parents = run('git', 'rev-list', '--parents', '-1', 'HEAD', capture=True).split()[1:]
-    if branch.startswith('maker-upgrade-') and len(parents) == 2:
-        # A merge that stopped on a conflict was finished by hand; only publishing remains.
-        return upgrade_request(repository, default, branch)
-    if branch != default or run('git', 'rev-parse', 'HEAD', capture=True).strip() != published:
+    head = run('git', 'rev-parse', 'HEAD', capture=True).strip()
+    if (branch.startswith(('maker-upgrade-', 'platform-upgrade-')) and head != published
+            and subprocess.run(['git', 'merge-base', '--is-ancestor', published, 'HEAD'], cwd=ROOT, check=False).returncode == 0):
+        # A merge that stopped on a conflict was finished by hand, or a push failed; only publishing remains.
+        return upgrade_request(repository, default, branch, published)
+    if branch != default or head != published:
         raise ValueError(f'{ROOT}: upgrade starts from an up-to-date {default} branch; run '
                          f'{git_step(ROOT, "switch", default)} and ./bilibi update, push any commits of your own, '
                          'then rerun ./bilibi upgrade')
-    try:
-        run('git', 'fetch', '--no-tags', 'upstream', '+refs/heads/main:refs/remotes/upstream/main')
-    except subprocess.CalledProcessError as error:
-        raise ValueError(f'{ROOT}: cannot fetch the maker; check with {git_step(ROOT, "ls-remote", "upstream")}, '
-                         'then rerun ./bilibi upgrade') from error
-    tip = run('git', 'rev-parse', 'upstream/main', capture=True).strip()
-    if subprocess.run(['git', 'merge-base', '--is-ancestor', tip, 'HEAD'], cwd=ROOT, check=False).returncode == 0:
-        print('Already up to date with the maker. Nothing was changed.')
+    tip = None
+    if adopted:
+        print('Maker: this application takes maker updates in maker.lock with ./bilibi update, so upgrade merges no maker files.')
+    else:
+        try:
+            run('git', 'fetch', '--no-tags', 'upstream', '+refs/heads/main:refs/remotes/upstream/main')
+        except subprocess.CalledProcessError as error:
+            raise ValueError(f'{ROOT}: cannot fetch the maker; check with {git_step(ROOT, "ls-remote", "upstream")}, '
+                             'then rerun ./bilibi upgrade') from error
+        tip = run('git', 'rev-parse', 'upstream/main', capture=True).strip()
+        if subprocess.run(['git', 'merge-base', '--is-ancestor', tip, 'HEAD'], cwd=ROOT, check=False).returncode == 0:
+            print('Already up to date with the maker.')
+            tip = None
+        elif subprocess.run(['git', 'merge-base', 'HEAD', tip], cwd=ROOT, stdout=subprocess.DEVNULL, check=False).returncode:
+            raise ValueError(f'{ROOT}: this history is not linked to the maker, so its updates cannot merge; '
+                             f'follow "If your history is not linked to the maker yet" in {MAKER_GUIDE} once, '
+                             'then rerun ./bilibi upgrade')
+    # Pin before anything changes here: a Platform problem stops the upgrade with nothing to undo.
+    platform = upgrade_platform()
+    if tip is None and platform is None:
+        print('Nothing was changed.')
         return
-    if subprocess.run(['git', 'merge-base', 'HEAD', tip], cwd=ROOT, stdout=subprocess.DEVNULL, check=False).returncode:
-        raise ValueError(f'{ROOT}: this history is not linked to the maker, so its updates cannot merge; '
-                         f'follow "If your history is not linked to the maker yet" in {MAKER_GUIDE} once, '
-                         'then rerun ./bilibi upgrade')
-    branch = f'maker-upgrade-{tip[:7]}'
+    branch = f'maker-upgrade-{tip[:7]}' if tip else f'platform-upgrade-{platform[2]}'
     if subprocess.run(['git', 'show-ref', '--verify', '--quiet', f'refs/heads/{branch}'], cwd=ROOT, check=False).returncode == 0:
         raise ValueError(f'{ROOT}: branch {branch} already exists from an earlier upgrade; continue it with '
                          f'{git_step(ROOT, "switch", branch)} and ./bilibi upgrade, or remove it with '
                          f'{git_step(ROOT, "branch", "-D", branch)} and rerun ./bilibi upgrade')
     run('git', 'switch', '--create', branch)
-    # The merged scripts are not run here: they first reach a machine through the reviewed pull request.
-    merged = subprocess.run(['git', 'merge', '--no-ff', '--no-edit', '-m', f'Merge maker updates ({tip[:7]})', tip],
-                            cwd=ROOT, check=False).returncode == 0
-    if not merged:
-        conflicts = [path for path in run('git', 'diff', '--name-only', '--diff-filter=U', '-z', capture=True).split('\0') if path]
-        abort = (f'{git_step(ROOT, "merge", "--abort")}, {git_step(ROOT, "switch", default)} and '
-                 f'{git_step(ROOT, "branch", "-D", branch)}')
-        if not conflicts:
-            raise ValueError(f'{ROOT}: the merge did not finish, for the reason shown above; to go back, run {abort}')
-        record = [path for path in conflicts if path in RECORD_FILES]
-        raise ValueError(
-            f'{ROOT}: the maker and your application changed the same lines. The merge is paused on branch {branch}; '
-            'nothing was pushed.\nConflicted files:\n' + ''.join(f'  {path}\n' for path in conflicts)
-            + (f'{", ".join(record)}: your application\'s own saved versions; keep yours with '
-               f'{git_step(ROOT, "checkout", "--ours", "--", *record)}.\n' if record else '')
-            + 'To finish: edit each file to keep what you need from both sides, then run '
-            f'{git_step(ROOT, "add", "--all")}, {git_step(ROOT, "commit", "--no-edit")} and ./bilibi upgrade again '
-            'to push and open the pull request.\n'
-            f'To give up and go back: {abort}.')
-    upgrade_request(repository, default, branch)
+    if platform:
+        for name, data in platform[1].items():
+            (ROOT / name).write_bytes(data)
+        run('git', 'add', '--', *RECORD_FILES)
+        run('git', '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '-m', f'Move the Platform to {platform[2]}')
+    if tip:
+        # The merged scripts are not run here: they first reach a machine through the reviewed pull request.
+        merged = subprocess.run(['git', 'merge', '--no-ff', '--no-edit', '-m', f'Merge maker updates ({tip[:7]})', tip],
+                                cwd=ROOT, check=False).returncode == 0
+        if not merged:
+            conflicts = [path for path in run('git', 'diff', '--name-only', '--diff-filter=U', '-z', capture=True).split('\0') if path]
+            abort = (f'{git_step(ROOT, "merge", "--abort")}, {git_step(ROOT, "switch", default)} and '
+                     f'{git_step(ROOT, "branch", "-D", branch)}')
+            if not conflicts:
+                raise ValueError(f'{ROOT}: the merge did not finish, for the reason shown above; to go back, run {abort}')
+            record = [path for path in conflicts if path in RECORD_FILES]
+            raise ValueError(
+                f'{ROOT}: the maker and your application changed the same lines. The merge is paused on branch {branch}; '
+                'nothing was pushed.\nConflicted files:\n' + ''.join(f'  {path}\n' for path in conflicts)
+                + (f'{", ".join(record)}: your application\'s own saved versions; keep yours with '
+                   f'{git_step(ROOT, "checkout", "--ours", "--", *record)}.\n' if record else '')
+                + 'To finish: edit each file to keep what you need from both sides, then run '
+                f'{git_step(ROOT, "add", "--all")}, {git_step(ROOT, "commit", "--no-edit")} and ./bilibi upgrade again '
+                'to push and open the pull request.\n'
+                f'To give up and go back: {abort}.')
+    upgrade_request(repository, default, branch, published)
 
 
 REPOSITORY_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+')
@@ -903,9 +972,10 @@ def main():
               '                release on GitHub.\n'
               '                docs/guides/releasing.md explains the final publish step.\n\n'
               'Stay current with the maker\n'
-              '  upgrade       For applications without maker.lock: merge the maker\'s files on a\n'
-              '                new branch and open one pull request for you to review. Adopted\n'
-              '                applications use update. docs/guides/maker-updates.md explains both.\n\n'
+              '  upgrade       Move the Platform and official Domains and Extensions to the newest\n'
+              '                recommended release, show its upgrade notes and, without maker.lock,\n'
+              '                merge the maker\'s files: one pull request for you to review.\n'
+              '                docs/guides/maker-updates.md explains update and upgrade.\n\n'
               'Less often\n'
               '  setup         Install the tools and fetch the sources, without starting.\n'
               '  adopt         One-time shared-tooling adoption; see docs/guides/maker-updates.md.\n'
