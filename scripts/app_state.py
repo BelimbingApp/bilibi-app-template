@@ -39,6 +39,7 @@ def sanitize(text):
     for key, value in os.environ.items():
         if value and (key.endswith('DATABASE_URL') or len(value) >= 8 and SECRET_NAME.search(key.upper())):
             text = text.replace(value, '[redacted]')
+    text = re.sub(r'\A(?:(?!-----BEGIN ).)*?-----END [A-Z ]*PRIVATE KEY-----', '[redacted private key]', text, flags=re.S)
     text = re.sub(r'-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|\Z)',
                   '[redacted private key]', text, flags=re.S)
     text = re.sub(r'(\b[a-z][a-z0-9+.-]*://)[^\s/@]+@', r'\1[redacted]@', text, flags=re.I)
