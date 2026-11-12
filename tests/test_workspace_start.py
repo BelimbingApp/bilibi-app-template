@@ -94,6 +94,9 @@ class ExecutableStartTest(WorkspaceFixture):
     def test_start_carries_installed_or_fallback_node_through_setup_and_launcher(self):
         harness, native_env = test_native_builder.NativeBuilderTest().fixture(self.app)
         self.env.update(native_env)
+        # This fixture exercises a developer invocation, even on hosted CI.
+        self.env.pop('CI', None)
+        self.env.pop('GITHUB_ACTIONS', None)
         home = self.root / 'isolated-home'
         home.mkdir()
         self.env['HOME'] = str(home)
