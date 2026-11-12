@@ -61,16 +61,17 @@ class SanitizeTest(unittest.TestCase):
         self.assertNotIn('KEYBODY', cleaned)
         self.assertNotIn('END PRIVATE KEY', cleaned)
         self.assertIn('error: after the key', cleaned)
-        window = 4 * 16 * 1024
-        key = '-----BEGIN PRIVATE KEY-----\n' + fragment
+        key = '-----BEGIN PRIVATE KEY-----\n' + 'KEYBODY' * 10000 + '\n-----END PRIVATE KEY-----\n'
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             (root / '.local/jobs').mkdir(parents=True)
-            raw = (key + 'x\n' * (window // 2)).encode()
+            raw = ('start of log\n' + key + 'error: after the key\n').encode()
+            self.assertTrue(raw.index(b'-----BEGIN') < len(raw) - 4 * 16 * 1024 < raw.index(b'-----END'))
             (root / '.local/jobs/job1.log').write_bytes(raw)
             for read in (app_state.tail_file(root / '.local/jobs/job1.log'), jobs.log(root, 'job1')):
                 self.assertNotIn('KEYBODY', read)
                 self.assertNotIn('END PRIVATE KEY', read)
+                self.assertIn('error: after the key', read)
 
 class AddressTest(unittest.TestCase):
     def setUp(self):
