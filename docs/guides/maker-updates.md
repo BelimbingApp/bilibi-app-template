@@ -125,7 +125,7 @@ Upgrade does not move the Platform, Domains and Extensions in `setup.toml` to ne
 
 ## One-time adoption
 
-New applications cloned from a maker with this bootstrap run `./bilibi adopt` after connecting `origin` to their own repository. Review and commit `bilibi`, `maker.toml` and `maker.lock`, then push through the usual review process of your application. From then on, daily work uses `./bilibi update`.
+New applications cloned from a maker with this bootstrap run `./bilibi adopt` after `./bilibi own <owner>/<name>` connects `origin` to their own repository. Review and commit `bilibi`, `maker.toml` and `maker.lock`, then push through the usual review process of your application. From then on, daily work uses `./bilibi update`.
 
 For an older application with copied tooling, start from a **clean checkout** with no unresolved merge, and keep a copy of any work and runtime data first. Point `upstream` at the official maker (add it if it is missing):
 

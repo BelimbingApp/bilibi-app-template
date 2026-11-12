@@ -57,6 +57,7 @@ Run commands from the application's root folder. `./bilibi help` shows the same 
 | Command | What it does | When to use it |
 | --- | --- | --- |
 | `./bilibi start` | Installs anything missing, fetches the sources, runs the application, and opens it in your browser | Every time you want to run your application |
+| `./bilibi own <owner>/<name>` | Creates your private GitHub repository (or uses an empty one), makes it `origin`, keeps the maker as `upstream`, sets the `gh` default and pushes `main` | Once, in a fresh clone; see "Start here" in [README.md](../../README.md#start-here) |
 | `./bilibi add <name>` | Adds a Domain or Extension, such as `finance`. You can also paste the `add` command that the Software page shows. | When you want a new business feature. Run `start` again afterwards. |
 | `./bilibi status` | Lists the Platform, Domains and Extensions, with their branches, your uncommitted changes, and any difference from the saved versions | When you want to see what you have changed |
 | `./bilibi update` | Moves `maker.lock` to the newest maker (listing its commits), then gets your team's changes and restores the saved source versions. `--back` or `--to <commit>` returns to an earlier maker. | Before you start work, to match your team |

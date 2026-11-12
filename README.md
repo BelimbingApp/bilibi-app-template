@@ -42,7 +42,7 @@ The first start installs what is missing, such as Rust, PostgreSQL and Node, and
 
 The **Software** page in Bilibi lists what is available, and shows the exact `add` command for each one.
 
-3. Make it yours. Create an empty private repository on GitHub, for example `your-company/my-bilibi`. Before you push, choose your application's licence. A private application usually starts with `Copyright (c) <year> <owner>. All rights reserved.` in its root `LICENSE`; an open-source application should use a licence you choose. The maker's MIT licence is not your application's licence, so keep it separately. If your copy still has a root `LICENSE` (you cloned the maker directly), move it with:
+3. Make it yours. Your application gets its own private repository on GitHub, for example `your-company/my-bilibi`. Before you push, choose your application's licence. A private application usually starts with `Copyright (c) <year> <owner>. All rights reserved.` in its root `LICENSE`; an open-source application should use a licence you choose. The maker's MIT licence is not your application's licence, so keep it separately. If your copy still has a root `LICENSE` (you cloned the maker directly), move it with:
 
 ```sh
 mkdir -p licenses
@@ -56,16 +56,35 @@ git add LICENSE licenses
 git commit -m "Set application licence"
 ```
 
-Then connect your repository and push:
+Then make the repository yours with one command. It needs the [GitHub CLI](https://cli.github.com/) (`gh`), signed in with `gh auth login`:
 
 ```sh
-git remote rename origin upstream
-git remote add origin https://github.com/your-company/my-bilibi.git
-gh repo set-default your-company/my-bilibi
+./bilibi own your-company/my-bilibi
+```
+
+```text
+Step 1 of 3: your repository your-company/my-bilibi on GitHub
+  $ gh repo create your-company/my-bilibi --private
+Step 2 of 3: point origin at your repository and keep the maker as upstream
+  $ git remote rename origin upstream
+  $ git remote set-url upstream https://github.com/BelimbingProject/bilibi-app-maker.git
+  $ git remote add origin https://github.com/your-company/my-bilibi.git
+  $ gh repo set-default your-company/my-bilibi
+Step 3 of 3: push main to your repository
+  $ git push --set-upstream origin main
+```
+
+Each step prints the command it runs, so you can see what happened. If `your-company/my-bilibi` already exists and is empty, `own` uses it instead of creating it; if it already has commits, `own` stops, so nothing there is overwritten. `gh repo set-default` matters more than it looks: without it, `gh` would open your later pull requests against the maker. If a step fails, fix the cause it shows and run the same command again; it finishes the remaining steps.
+
+`own` is for a fresh clone. If `origin` already points somewhere other than the maker, it changes nothing and prints the commands to connect your repository by hand.
+
+Now adopt the maker's shared tooling, and push that too:
+
+```sh
 ./bilibi adopt
 git add bilibi maker.toml maker.lock
 git commit -m "Adopt versioned shared maker tooling"
-git push -u origin main
+git push
 ```
 
 Your folder now has two remotes. `origin` is your application, where you push. `upstream` is the maker. `./bilibi update` takes its later tooling improvements without merging maker files, and records the maker version in `maker.lock`. An application that still carries copied maker files uses `./bilibi upgrade` instead, which merges them through one pull request. See [Take maker updates](docs/guides/maker-updates.md).
