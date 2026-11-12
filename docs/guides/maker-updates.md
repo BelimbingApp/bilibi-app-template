@@ -43,7 +43,7 @@ If your application has `maker.lock`, use `update`; `./bilibi upgrade` stops the
 
 | Where | Which maker runs |
 | --- | --- |
-| `./bilibi start`, `status`, `check`, `release`, `setup`, `add` | The commit in `maker.lock` in your checkout |
+| `./bilibi start`, `choose`, `status`, `check`, `release`, `setup`, `add` | The commit in `maker.lock` in your checkout |
 | A teammate's fresh clone | The commit in `maker.lock` they cloned; never the newest maker |
 | The pre-commit hook | The commit in `maker.lock`, if it is already installed; otherwise the hook does nothing |
 | CI and release (`./bilibi tooling`) | The commit in `maker.lock` in the commit being checked |

@@ -33,14 +33,20 @@ Leave `./bilibi start` running; it rebuilds and reloads when the code changes. R
 
 The first start installs what is missing, such as Rust, PostgreSQL and Node, and builds Bilibi, so it takes a while. On the first start, Bilibi opens in your browser at the sign-in page. Later starts print its address. Sign in as `ai@agent.my` / `bilibi-dev`. You now have the Platform on its own: sign-in, companies, people, users, permissions and audit.
 
-2. Add the business features you want. A Domain is one business area, such as Finance:
+2. Add the business features you want. A Domain is one business area, such as Finance; an Extension adapts or connects one. The first `./bilibi start` lists them, with a line about each, before it builds anything. Move with the arrow keys and tick with space, or type an item's number, then press Enter and `y` to add them. To see the list again later:
+
+```sh
+./bilibi choose
+```
+
+If you already know the name, add it directly and start again:
 
 ```sh
 ./bilibi add finance
 ./bilibi start
 ```
 
-The **Software** page in Bilibi lists what is available, and shows the exact `add` command for each one.
+The **Software** page in Bilibi lists the same Domains and Extensions, and shows the exact `add` command for each one.
 
 3. Make it yours. Your application gets its own private repository on GitHub, for example `your-company/my-bilibi`. Before you push, choose your application's licence. A private application usually starts with `Copyright (c) <year> <owner>. All rights reserved.` in its root `LICENSE`; an open-source application should use a licence you choose. The maker's MIT licence is not your application's licence, so keep it separately. If your copy still has a root `LICENSE` (you cloned the maker directly), move it with:
 
