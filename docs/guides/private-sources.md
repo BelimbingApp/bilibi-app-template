@@ -60,6 +60,16 @@ To change your answer later, set or delete the variable on the repository's Acti
 
 When `SOURCE_APP_CLIENT_ID` is already set, the command stops instead of creating a second App. To let the checks read a new private repository, add it to the existing App: in the settings of your account or organisation on GitHub, open the **Installed GitHub Apps** page, choose **Configure** next to the App, and select the repository. To start again with a new App, delete the variable with `gh variable delete SOURCE_APP_CLIENT_ID` and run the command again.
 
+## Replacing the private key
+
+The private key lives in one place only: the Actions secret `SOURCE_APP_PRIVATE_KEY` of your application repository, where GitHub keeps it encrypted and hides it in check logs. To replace it, for example when someone who could read it leaves:
+
+1. On the App settings page on GitHub, generate a new private key. Your browser downloads it as a `.pem` file.
+2. Store it with `gh secret set SOURCE_APP_PRIVATE_KEY < downloaded.pem`, then delete the downloaded file.
+3. Back on the App settings page, delete the old private key, so it no longer works.
+
+The client ID stays the same, so `SOURCE_APP_CLIENT_ID` needs no change.
+
 ## If something goes wrong
 
 The command stops with a message that says what happened and what to run next. Two cases need a word more:
