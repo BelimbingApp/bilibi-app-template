@@ -58,6 +58,7 @@ Run commands from the application's root folder. `./bilibi help` shows the same 
 | --- | --- | --- |
 | `./bilibi start` | Installs anything missing, fetches the sources, runs the application, and opens it in your browser | Every time you want to run your application |
 | `./bilibi own <owner>/<name>` | Creates your private GitHub repository (or uses an empty one), makes it `origin`, keeps the maker as `upstream`, sets the `gh` default and pushes `main` | Once, in a fresh clone; see "Start here" in [README.md](../../README.md#start-here) |
+| `./bilibi choose` | Lists the official Domains and Extensions that are not added yet, with a line about each. Tick the ones you want, confirm, and it adds them and starts the application. | When you want business features but don't know their names. The first `start` offers it too. |
 | `./bilibi add <name>` | Adds a Domain or Extension, such as `finance`. You can also paste the `add` command that the Software page shows. | When you want a new business feature. Run `start` again afterwards. |
 | `./bilibi status` | Lists the Platform, Domains and Extensions, with their branches, your uncommitted changes, and any difference from the saved versions | When you want to see what you have changed |
 | `./bilibi update` | Moves `maker.lock` to the newest maker (listing its commits), then gets your team's changes and restores the saved source versions. `--back` or `--to <commit>` returns to an earlier maker. | Before you start work, to match your team |
@@ -70,6 +71,24 @@ Run commands from the application's root folder. `./bilibi help` shows the same 
 `./bilibi new` belongs to the Platform repository. In an application repository, you already own the application recipe.
 
 Run `./bilibi update` to receive changes published to your application branch; after one-time adoption it first moves `maker.lock` to the newest maker. It restores `sources/` to the commits saved in the updated `setup.toml` and restores the saved dependency lock. **Check asks before saving new versions.** Update refuses real edits, staged files, untracked files and unpushed commits, and prints the affected path and next step. It can replace verified generated composition files. It never stashes your work or forces a checkout. An application branch needs a remote upstream; source commits must be published to their declared `origin`.
+
+## Choose business features from a list
+
+The first time you run `./bilibi start` in a new application, before it installs or builds anything, it lists the official Domains and Extensions with one line about each:
+
+```text
+Domains:
+> [ ]  1. People (people) - Employment, attendance, leave, claims, skills, ...
+  [ ]  2. Finance (finance) - A company's bookkeeping: the ledger, bills and ...
+```
+
+Move with the up and down arrows (or `j` and `k`) and press space to tick an entry, or type its number. Press Enter when you are done, then `y` to add what you ticked. Nothing changes until you press `y`: `q`, Escape or any other answer leaves the application as it was. Each ticked entry is added exactly as `./bilibi add <id>` adds it, so the same checks and refusals apply, and start then carries on with them.
+
+The list comes from the Platform's `catalogue.json`, the same list the **Software** page shows. Entries already in `sources/platform/apps/` are left out. Start offers the list once, and only when nothing has been added or saved yet. Run `./bilibi choose` to see it again at any time; it adds what you confirm and then starts the application.
+
+Without a terminal, such as in CI or when an AI agent runs the command, nothing asks a question. `./bilibi choose` prints the list and the `add` command to use, and adds nothing. Start prints a one-line hint and carries on.
+
+## Add a Domain or Extension by name
 
 Copy the install command from **Administration › System › Software** and run it from your application root:
 

@@ -18,6 +18,7 @@ import tomllib
 import uuid
 
 import arch_prerequisites
+import choose as guide
 import native_builder
 import recipe
 import publish
@@ -500,7 +501,41 @@ def own(repository):
           'see "Start here" in README.md.')
 
 
+def catalogue():
+    if not (PLATFORM / 'catalogue.json').is_file():
+        raise ValueError(f'{PLATFORM}/catalogue.json is missing; this Platform has no catalogue. Use ./bilibi add with the command the Software page shows.')
+    return json.loads((PLATFORM / 'catalogue.json').read_text())
+
+
+def choose(then_start=True):
+    """List the catalogue, add what the person confirms, then start with it."""
+    recipe.materialize()
+    hooks()
+    added = guide.guided(catalogue(), {name for name, _ in repositories()}, add)
+    if added and then_start:
+        start()
+    return added
+
+
+def first_start():
+    """The first start of a new application, at a terminal: offer the list once."""
+    marker = ROOT / '.local/guided-start'
+    saved, _ = recipe.recipe()
+    if marker.exists() or saved.get('domains') or saved.get('extensions'):
+        return
+    recipe.materialize()
+    if any(name != 'platform' for name, _ in repositories()) or not (PLATFORM / 'catalogue.json').is_file():
+        return
+    if not guide.interactive():
+        print('Add business features with ./bilibi add <id>; ./bilibi choose lists them.', flush=True)
+        return
+    marker.parent.mkdir(exist_ok=True)
+    marker.write_text('The first ./bilibi start offered the Domain and Extension list. Run ./bilibi choose to see it again.\n')
+    choose(then_start=False)
+
+
 def start():
+    first_start()
     setup()
     status()
     print('\nStarting local sources with the development seed. Run ./bilibi check before a release to choose new commits.', flush=True)
@@ -564,9 +599,9 @@ def add(component, kind=None, source=None, commit=None):
     # Obtain missing sources and install the guard even before the first start.
     recipe.materialize()
     hooks()
-    catalogue = json.loads((PLATFORM / 'catalogue.json').read_text())
+    listed = catalogue()
     matches = [(layer, facts) for layer in ('domains', 'extensions')
-               if (facts := catalogue.get(layer, {}).get(component)) is not None]
+               if (facts := listed.get(layer, {}).get(component)) is not None]
     if len(matches) != 1:
         raise ValueError(f'{component}: choose an unambiguous official Domain or Extension from the Software page')
     layer, facts = matches[0]
@@ -811,8 +846,8 @@ def check_staged():
 
 def main():
     parser = argparse.ArgumentParser(prog='./bilibi', description=__doc__)
-    parser.add_argument('command', nargs='?', choices=('help', 'start', 'update', 'upgrade', 'own', 'add', 'status', 'setup', 'check', 'release', 'check-staged'),
-                        metavar='{help,start,update,upgrade,own,add,status,setup,check,release}')
+    parser.add_argument('command', nargs='?', choices=('help', 'start', 'choose', 'update', 'upgrade', 'own', 'add', 'status', 'setup', 'check', 'release', 'check-staged'),
+                        metavar='{help,start,choose,update,upgrade,own,add,status,setup,check,release}')
     parser.add_argument('component', nargs='?')
     parser.add_argument('--kind', choices=('domains', 'extensions'), help='add: component mount kind; give with --source and --commit')
     parser.add_argument('--source', help='add: official BelimbingProject repository URL from Software')
@@ -841,6 +876,8 @@ def main():
               'Run your application on this computer\n'
               '  start         Install anything missing and run the application. The first\n'
               '                start opens it in your browser.\n'
+              '  choose        List the official Domains and Extensions, tick the ones you\n'
+              '                want, then add them and start. The first start offers it.\n'
               '  add <name>    Add a Domain or Extension, such as: ./bilibi add finance\n'
               '                Or paste the add command that the Software page shows.\n'
               '                Then run ./bilibi start again to use it.\n'

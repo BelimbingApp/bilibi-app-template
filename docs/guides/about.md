@@ -28,11 +28,10 @@ If you started in `bilibi` instead, `./bilibi new <name>` there turns what you b
 
 ## What the maker will do
 
-Today the maker gives you a running Bilibi and the commands to build, check and release it. Some steps are still manual, such as making the clone your own or connecting private Domains. The maker will take these over, one command each:
+Today the maker gives you a running Bilibi, a list to choose its business features from (`./bilibi choose`, also offered on the first start), and the commands to build, check and release it. Some steps are still manual, such as making the clone your own or connecting private Domains. The maker will take these over, one command each:
 
 | Step | Today | Planned |
 | --- | --- | --- |
-| Choose business features | `./bilibi add <name>`, if you know the name | Pick from a list ([#11](https://github.com/BelimbingProject/bilibi-app-maker/issues/11)) |
 | Make it yours | Four Git commands, in [Start here](../../README.md#start-here) | `./bilibi own <owner/name>` ([#12](https://github.com/BelimbingProject/bilibi-app-maker/issues/12)) |
 | Use private Domains | Set up a GitHub App by hand, in [Private sources](private-sources.md#private-sources) | One command ([#13](https://github.com/BelimbingProject/bilibi-app-maker/issues/13)) |
 | Release and install | `./bilibi release --tag setup-vX.Y.Z` starts the release; [publish the draft and install it](releasing.md#release-your-setup) | Combine the remaining steps ([#14](https://github.com/BelimbingProject/bilibi-app-maker/issues/14)) |
