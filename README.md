@@ -73,14 +73,14 @@ Your folder now has two remotes. `origin` is your application, where you push. `
 > [!WARNING]
 > Clone the maker as shown. A copy made any other way, such as a downloaded ZIP file, has none of the maker's history. One-time adoption then needs matching official copied tooling or a deliberate manual review.
 
-4. Build and release the versions you tested. Commit and push changes in each part's own repository first. These commands use the pinned native build tools:
+4. Check and release the versions you tested. Commit and push changes in each part's own repository first. Check uses supported installed Node, with automatic private fallback; GitHub builds releases with pinned tools. Provide a separate empty PostgreSQL 18 database for check (see the release guide):
 
 ```sh
-./bilibi build
+./bilibi check
 ./bilibi release --tag setup-v1.0.0
 ```
 
-Build asks about each part with new commits. Say yes to use them and save the build record only after the build succeeds, or no to build its saved version. Commit the successful build record and merge it into your application's default branch. Release then creates the protected tag and starts the GitHub release build. GitHub uses exactly those reviewed versions.
+Check asks about each part with new commits. Say yes to use them and save the build record only after all checks pass, or no to build its saved version. Commit the successful build record and merge it into your application's default branch. Release then creates the protected tag and starts the GitHub release build. GitHub uses exactly those reviewed versions.
 To install it on a server, follow [Release your setup](docs/guides/releasing.md#release-your-setup) and [Install a release](docs/guides/installing.md#install-a-release).
 
 ## Guides

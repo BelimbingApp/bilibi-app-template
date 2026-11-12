@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 import tomllib
 import urllib.request
 
@@ -58,11 +59,92 @@ def verify_binaries(config):
     return libraries
 
 
-def prepare(config):
+def installed_node():
+    # Platform assets/package.json and dev-setup.sh require Node >=22. All
+    # engines in the recorded asset lock accept that range; prereleases do not
+    # satisfy it. npm must also run under the selected Node.
+    try:
+        version = output('node', '--version')
+        match = re.fullmatch(r'v(\d+)\.\d+\.\d+', version)
+        return bool(match and int(match[1]) >= 22
+                    and re.fullmatch(r'\d+\.\d+\.\d+', output('npm', '--version')))
+    except (OSError, subprocess.CalledProcessError):
+        return False
+
+
+def ci():
+    return any(os.environ.get(key, '').lower() not in ('', '0', 'false')
+               for key in ('CI', 'GITHUB_ACTIONS'))
+
+
+def node_digest(home):
+    digest = hashlib.sha256()
+    for path in sorted(home.rglob('*')):
+        if path.name == '.bilibi-verified':
+            continue
+        name = str(path.relative_to(home))
+        digest.update(name.encode() + b'\0')
+        if path.is_symlink():
+            digest.update(os.readlink(path).encode())
+        elif path.is_file():
+            digest.update(str(path.stat().st_mode & 0o777).encode() + b'\0' + path.read_bytes())
+    return digest.hexdigest()
+
+
+def select_node(config, tools, development=False):
+    node_home = tools / f'node-{config["node"]}'
+    if (development and not ci() and installed_node()
+            and Path(shutil.which('node')).resolve() != (node_home / 'bin/node').resolve()):
+        return 'installed'
+    tools.mkdir(parents=True, exist_ok=True)
+    verification = node_home / '.bilibi-verified'
+    if verification.is_file():
+        expected = config['node_sha256'] + ':' + node_digest(node_home)
+        if verification.read_text().strip() != expected:
+            raise ValueError(f'{node_home}: private Node changed; move this cache aside and retry')
+    else:
+        archive = tools / 'node.tar.xz'
+        urllib.request.urlretrieve(f'https://nodejs.org/dist/v{config["node"]}/node-v{config["node"]}-linux-x64.tar.xz', archive)
+        if hashlib.sha256(archive.read_bytes()).hexdigest() != config['node_sha256']:
+            raise ValueError('Node download checksum differs from builder.toml')
+        with tempfile.TemporaryDirectory(prefix='node-install-', dir=tools) as temp:
+            with tarfile.open(archive) as stream:
+                stream.extractall(temp, filter='data')
+            extracted = Path(temp) / f'node-v{config["node"]}-linux-x64'
+            (extracted / '.bilibi-verified').write_text(config['node_sha256'] + ':' + node_digest(extracted) + '\n')
+            if node_home.exists():
+                shutil.rmtree(node_home)
+            extracted.rename(node_home)
+        archive.unlink()
+    os.environ['PATH'] = str(node_home / 'bin') + os.pathsep + os.environ['PATH']
+    expect('Node', output('node', '--version'), 'v' + config['node'])
+    return 'pinned'
+
+
+def build_toolchain(config):
+    """Tie tool versions to these compiled bytes, independently of later setup."""
+    target = Path(os.environ.get('CARGO_TARGET_DIR', BUILD / 'target')) / config['target'] / 'release'
+    evidence = BUILD / 'evidence'
+    versions = json.loads((evidence / 'native-builder.json').read_text())
+    versions['binaries'] = {name: hashlib.sha256((target / name).read_bytes()).hexdigest()
+                            for name in ('bilibi-web', 'bilibi-installer')}
+    (evidence / 'build-toolchain.json').write_text(json.dumps(versions, indent=2) + '\n')
+
+
+def qualified_toolchain(config, target):
+    versions = json.loads((BUILD / 'evidence/build-toolchain.json').read_text())
+    if (versions.get('node_selection') != 'pinned' or versions.get('node') != 'v' + config['node']
+            or versions.get('node_archive_sha256') != config['node_sha256']):
+        raise ValueError('Packaging requires a build with the pinned Node archive; CI rebuilds the checked record.')
+    for name in ('bilibi-web', 'bilibi-installer'):
+        if versions['binaries'][name] != hashlib.sha256((target / name).read_bytes()).hexdigest():
+            raise ValueError(f'{name}: bytes differ from the recorded build toolchain; rebuild before packaging')
+    return versions
+
+
+def prepare(config, development=False):
     if platform.system() != 'Linux' or platform.machine() != 'x86_64':
         raise ValueError('This build recipe needs Linux x86-64. On Windows, use WSL2.')
-    if shutil.which('node'):
-        expect('Node', output('node', '--version'), 'v' + config['node'])
     # Reject explicitly installed mismatches before changing packages or tools.
     for command, version in [('zig', config['zig']), ('cargo-zigbuild', config['cargo_zigbuild'])]:
         if shutil.which(command):
@@ -84,23 +166,7 @@ def prepare(config):
     subprocess.run(['rustup', 'target', 'add', '--toolchain', rust, config['target']], check=True)
     tools = BUILD / 'native-tools'
     tools.mkdir(parents=True, exist_ok=True)
-    node_home = tools / f'node-{config["node"]}'
-    # Use the checked archive even when PATH has matching Node: it pins npm too.
-    if not (node_home / 'bin/node').exists():
-        archive = tools / 'node.tar.xz'
-        urllib.request.urlretrieve(f'https://nodejs.org/dist/v{config["node"]}/node-v{config["node"]}-linux-x64.tar.xz', archive)
-        if hashlib.sha256(archive.read_bytes()).hexdigest() != config['node_sha256']:
-            raise ValueError('Node download checksum differs from builder.toml')
-        node_home.mkdir(exist_ok=True)
-        with tarfile.open(archive) as stream:
-            # The official archive has one top-level directory.
-            stream.extractall(tools, filter='data')
-        extracted = tools / f'node-v{config["node"]}-linux-x64'
-        node_home.rmdir()
-        extracted.rename(node_home)
-        archive.unlink()
-    os.environ['PATH'] = str(node_home / 'bin') + os.pathsep + os.environ['PATH']
-    expect('Node', output('node', '--version'), 'v' + config['node'])
+    node_selection = select_node(config, tools, development)
     venv = tools / 'python'
     if not shutil.which('zig') or not shutil.which('cargo-zigbuild'):
         if not (venv / 'bin/python').exists():
@@ -118,6 +184,8 @@ def prepare(config):
     expect('cargo-zigbuild', output('cargo-zigbuild', '--version').split()[-1], config['cargo_zigbuild'])
     os.environ['CARGO_ZIGBUILD_ZIG_PATH'] = shutil.which('zig')
     return {'rustc': output('rustc', '--version'), 'node': output('node', '--version'),
+            'node_selection': node_selection,
+            'node_archive_sha256': config['node_sha256'] if node_selection == 'pinned' else None,
             'npm': output('npm', '--version'),
             'zig': output('zig', 'version'), 'cargo_zigbuild': output('cargo-zigbuild', '--version'),
             'host': platform.platform(), 'host_glibc': platform.libc_ver()}
@@ -125,6 +193,9 @@ def prepare(config):
 
 def main():
     config = read(ROOT / 'builder.toml')
+    if sys.argv[1:] == ['--record-build']:
+        build_toolchain(config)
+        return
     if sys.argv[1:] == ['--verify-binaries']:
         verify_binaries(config)
         return
@@ -133,7 +204,10 @@ def main():
     temporary = BUILD / 'tmp'
     temporary.mkdir(exist_ok=True)
     os.environ['TMPDIR'] = str(temporary)
-    versions = prepare(config)
+    development = sys.argv[1:2] == ['--development']
+    if development:
+        del sys.argv[1]
+    versions = prepare(config, development=development)
     evidence = BUILD / 'evidence'
     evidence.mkdir(parents=True, exist_ok=True)
     (evidence / 'native-builder.json').write_text(json.dumps(versions, indent=2) + '\n')
@@ -141,7 +215,7 @@ def main():
                 output('dpkg-query', '-W') if shutil.which('dpkg-query') else 'No supported package database on this host')
     (evidence / 'builder-packages.txt').write_text(packages + '\n')
     if sys.argv[1:] == ['--setup']:
-        print('Native build tools match rust-toolchain.toml and builder.toml.')
+        print(f'Native tools ready; Node {versions["node"]} ({versions["node_selection"]}), npm {versions["npm"]}.')
         return
     os.environ.update(CARGO_INCREMENTAL='0', CARGO_PROFILE_RELEASE_STRIP='symbols',
                       BILIBI_GLIBC=config['glibc'], BILIBI_BUILD_DIR=str(BUILD),

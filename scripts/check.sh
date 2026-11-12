@@ -64,6 +64,7 @@ for _ in $(seq 1 60); do
     kill -0 "$server" 2>/dev/null || { echo 'App exited during boot' >&2; exit 1; }
     status=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/" || true)
     if [[ $status =~ ^(200|30[1-8])$ ]]; then
+        python3 "$root/scripts/native_builder.py" --record-build
         echo "GET / answered $status"
         exit 0
     fi

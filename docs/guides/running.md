@@ -14,7 +14,7 @@ The same command works with or without an AI agent. It obtains missing sources, 
 
 Use Ubuntu, Debian, Arch Linux or Omarchy, including Ubuntu or Debian on WSL2. You need Git, Bash, Python 3.11 or newer, network access and installation privileges. Setup may ask for your sudo password. Ubuntu 22.04 and Debian 11 ship older Python; install Python 3.11 or newer as `python3`, or use Ubuntu 24.04 or Debian 12.
 
-On Arch and Omarchy, setup installs missing prerequisites with pacman and performs a full system upgrade before installing packages. It uses rustup for the pinned Rust toolchain and downloads the same checked Node 24 and Zig versions used on Ubuntu and Debian. PostgreSQL must be version 18. An installed Node or Zig version that differs from the recipe stops setup with the required version; select that version on your PATH and rerun setup. The Platform's scripts prepare the remaining development tools, including cargo-watch. See [Release your setup](releasing.md#build-requirements) for the exact pins.
+On Arch and Omarchy, setup installs missing prerequisites with pacman and performs a full system upgrade before installing packages. It uses rustup for the pinned Rust toolchain and uses your installed stable Node 22 or newer and working npm for local development, or downloads the checked private Node 24 archive automatically if they are unavailable or unsupported. The same selection applies on Ubuntu and Debian. Zig stays pinned. PostgreSQL must be version 18. An installed Zig version that differs from the recipe stops setup with the required version. Node selection changes only the command environment, never global Node or npm. The Platform's scripts prepare the remaining development tools, including cargo-watch. See [Release your setup](releasing.md#build-requirements) for the exact pins.
 
 ## Your workspace
 
@@ -62,14 +62,13 @@ Run commands from the application's root folder. `./bilibi help` shows the same 
 | `./bilibi update` | Moves `maker.lock` to the newest maker (listing its commits), then gets your team's changes and restores the saved source versions. `--back` or `--to <commit>` returns to an earlier maker. | Before you start work, to match your team |
 | `./bilibi upgrade` | Merges the maker's files on a new branch and opens one pull request for you to review (applications without `maker.lock`; adopted ones use `update`) | When the maker has improved and your application still carries copied maker files; see [Take maker updates](maker-updates.md#which-command) |
 | `./bilibi check` | Asks about new commits, builds and tests against an empty test database, then saves your choices if it passes. | Before a release |
-| `./bilibi build` | Asks about new commits, builds the release program, then saves your choices if it succeeds. | When you make a release; see [Release your setup](releasing.md#release-your-setup) |
-| `./bilibi release --tag setup-vX.Y.Z` | Requires the committed successful build record and starts the GitHub release workflow. Refuses other uncommitted application files, or a record that has no successful build or check. | After build and check pass |
+| `./bilibi release --tag setup-vX.Y.Z` | Requires the committed successful build record and starts the GitHub release workflow. Refuses other uncommitted application files, or a record that has no successful check. | After check passes |
 | `./bilibi setup` | Installs the tools and fetches the sources, without starting | When you want everything ready in advance |
 | `./bilibi help` | Shows the command list | Any time |
 
 `./bilibi new` belongs to the Platform repository. In an application repository, you already own the application recipe.
 
-Run `./bilibi update` to receive changes published to your application branch; after one-time adoption it first moves `maker.lock` to the newest maker. It restores `sources/` to the commits saved in the updated `setup.toml` and restores the saved dependency lock. **Build and check ask before saving new versions.** Update refuses real edits, staged files, untracked files and unpushed commits, and prints the affected path and next step. It can replace verified generated composition files. It never stashes your work or forces a checkout. An application branch needs a remote upstream; source commits must be published to their declared `origin`.
+Run `./bilibi update` to receive changes published to your application branch; after one-time adoption it first moves `maker.lock` to the newest maker. It restores `sources/` to the commits saved in the updated `setup.toml` and restores the saved dependency lock. **Check asks before saving new versions.** Update refuses real edits, staged files, untracked files and unpushed commits, and prints the affected path and next step. It can replace verified generated composition files. It never stashes your work or forces a checkout. An application branch needs a remote upstream; source commits must be published to their declared `origin`.
 
 Copy the install command from **Administration › System › Software** and run it from your application root:
 
@@ -79,9 +78,9 @@ Copy the install command from **Administration › System › Software** and run
 
 Give all three flags together. The commit must be a full lowercase 40-character ID. Finance mounts at `sources/platform/apps/domains/finance`; Extensions mount at `sources/platform/apps/extensions/<id>`. Without these flags, `add` uses the local Platform catalogue and the repository's default branch, as before.
 
-An existing checkout at the requested commit keeps its branch and edits. If it is at another commit, `add` refuses and prints the requested commit and fetch/checkout steps. Save your work before following those steps. A different origin, occupied path or mismatched component descriptor also causes a refusal. If a new clone lacks the requested commit, it stays available for inspection and the message explains how to retry. Run `./bilibi start` to try the component, then commit and push your component work before `./bilibi build` saves your choice.
+An existing checkout at the requested commit keeps its branch and edits. If it is at another commit, `add` refuses and prints the requested commit and fetch/checkout steps. Save your work before following those steps. A different origin, occupied path or mismatched component descriptor also causes a refusal. If a new clone lacks the requested commit, it stays available for inspection and the message explains how to retry. Run `./bilibi start` to try the component, then commit and push your component work before `./bilibi check` saves your choice.
 
-Repeated setup does not fetch existing clones, so an unavailable remote cannot discard or block work already present. It never resets, cleans, switches or removes an existing checkout. A saved-version mismatch prints the path and next action. Build and check stop for uncommitted edits, except for verified generated composition files. They build saved commits in separate checkouts. GitHub uses only the committed build record.
+Repeated setup does not fetch existing clones, so an unavailable remote cannot discard or block work already present. It never resets, cleans, switches or removes an existing checkout. A saved-version mismatch prints the path and next action. Check stops for uncommitted edits, except for verified generated composition files. It builds saved commits in separate checkouts. GitHub uses only the committed build record.
 
 ## Commit safeguards
 

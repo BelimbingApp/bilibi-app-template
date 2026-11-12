@@ -240,7 +240,7 @@ class MakerUpdateTest(WorkspaceFixture):
         self.assertIn('reconcile any divergence yourself', self.command('update', ok=False))
         self.assertEqual(before, self.snapshot())
 
-    def test_shared_build_uses_application_record_and_cached_tools(self):
+    def test_shared_check_uses_application_record_and_cached_tools(self):
         from test_workspace_build import BUILD, BUILDER, RECORD
         for name in ('build.sh', 'check.sh'):
             (self.maker / 'scripts' / name).write_text(BUILD)
@@ -250,13 +250,15 @@ class MakerUpdateTest(WorkspaceFixture):
         self.git(self.maker, 'push')
         for name in ('builder.toml', 'rust-toolchain.toml'):
             (self.app / name).write_text('# Application-specific configuration\n')
-        (self.app / 'scripts/build.sh').write_text('exit 99\n')
+        (self.app / 'scripts/check.sh').write_text('exit 99\n')
         self.commit(self.app, 'Application owns config; copied build must not run')
         self.git(self.app, 'push')
         self.command('update')
         before = (self.app / 'setup.toml').read_bytes()
         lock = (self.app / 'maker.lock').read_bytes()
-        self.command('build')
+        self.assertNotIn('  build ', self.command('help'))
+        self.command('check')
+        self.assertTrue((self.app / '.local/successful-check').is_file())
         built = json.loads((self.app / 'build/built.json').read_text())
         self.assertEqual(built, tomllib.loads(before.decode()))
         self.assertEqual((self.app / 'setup.toml').read_bytes(), before)
@@ -267,7 +269,7 @@ class MakerUpdateTest(WorkspaceFixture):
         self.assertEqual(self.selected()['commit'], self.git(self.maker, 'rev-parse', 'HEAD'))
         # Once committed, another build leaves the checkout clean.
         self.commit(self.app, 'Move maker.lock')
-        self.command('build')
+        self.command('check')
         self.assertEqual(self.git(self.app, 'status', '--porcelain'), '')
         self.assertEqual((self.app / 'maker.lock').read_bytes(), lock)
 

@@ -54,6 +54,7 @@ def main():
     if rust.split()[1] != toolchain['toolchain']['channel'] or node != 'v' + builder['node']:
         raise ValueError('Compiler or Node differs from rust-toolchain.toml or builder.toml')
     binary_dir = Path(os.environ.get('CARGO_TARGET_DIR', recipe.BUILD / 'target')) / recipe.TARGET / 'release'
+    built_toolchain = native_builder.qualified_toolchain(builder, binary_dir)
     binary = binary_dir / 'bilibi-web'
     libraries = native_builder.verify_binaries(builder)
     status = recipe.checked_status(binary)
@@ -122,7 +123,7 @@ def main():
         'format': 1, 'setup': setup,
         'run': f'{os.environ.get("GITHUB_SERVER_URL", "https://github.com")}/{args.repository}/actions/runs/{os.environ.get("GITHUB_RUN_ID", "local")}',
         'attempt': os.environ.get('GITHUB_RUN_ATTEMPT'),
-        'native_builder': json.loads((recipe.BUILD / 'evidence/native-builder.json').read_text()),
+        'native_builder': built_toolchain,
     }))
     (output / 'SHA256SUMS').write_text(''.join(f'{recipe.digest(path)}  {path.name}\n' for path in sorted(output.iterdir())))
     print(app_asset)

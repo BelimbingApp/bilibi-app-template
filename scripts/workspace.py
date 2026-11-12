@@ -69,7 +69,7 @@ def moved_notice():
                 moved.append(part_name(name))
     if moved:
         verb = 'has' if len(moved) == 1 else 'have'
-        print(f'{", ".join(moved)} {verb} new commits since the last build. Run ./bilibi build to choose versions.')
+        print(f'{", ".join(moved)} {verb} new commits since the last build. Run ./bilibi check to choose versions.')
 
 
 def status():
@@ -91,9 +91,9 @@ def status():
         origin = run('git', 'remote', 'get-url', 'origin', cwd=folder, capture=True).strip()
         entry = saved.get(name)
         if entry is None:
-            print('Not in the saved build record. Run ./bilibi build to include it.')
+            print('Not in the saved build record. Run ./bilibi check to include it.')
         elif head != entry['commit'] or origin != entry['url']:
-            print(f'Saved: {entry["commit"]} from {entry["url"]}. Run ./bilibi build to choose versions.')
+            print(f'Saved: {entry["commit"]} from {entry["url"]}. Run ./bilibi check to choose versions.')
         else:
             print('Matches saved source revision (working changes shown above).')
     moved_notice()
@@ -145,13 +145,17 @@ def setup():
     recipe.materialize()
     hooks()
     output_paths()
+    # Keep selected tools in this process: Platform setup and start inherit PATH.
+    os.environ['PATH'] = str(Path.home() / '.cargo/bin') + os.pathsep + os.environ['PATH']
+    config = native_builder.read(ROOT / 'builder.toml')
     if arch_prerequisites.is_arch():
-        # Keep the pinned tools in this process too: start inherits this PATH.
-        os.environ['PATH'] = str(Path.home() / '.cargo/bin') + os.pathsep + os.environ['PATH']
-        native_builder.prepare(native_builder.read(ROOT / 'builder.toml'))
+        native_builder.prepare(config, development=True)
+    else:
+        # Platform setup supplies the remaining prerequisites on Ubuntu/Debian.
+        native_builder.select_node(config, BUILD / 'native-tools', development=True)
     os.environ['BILIBI_FRONT_DOOR'] = '1'
     run('bash', TOOLS / 'scripts/dev-setup.sh', PLATFORM)
-    run('bash', TOOLS / 'scripts/builder.sh', '--setup')
+    run('bash', TOOLS / 'scripts/builder.sh', '--development', '--setup')
     print('Setup complete. Local sources and runtime data are preserved. Run ./bilibi start.')
 
 
@@ -272,7 +276,7 @@ def update():
         allowed = update_clean(folder, generated if name == 'platform' else None)
         if name not in saved:
             raise ValueError(f'{folder}: not in the incoming setup.toml; move this clone outside sources/ yourself, '
-                             'or run ./bilibi build and release the application record before retrying')
+                             'or run ./bilibi check and release the application record before retrying')
         source = saved[name]
         origin = subprocess.run(['git', 'remote', 'get-url', 'origin'], cwd=folder,
                                 text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False).stdout.strip()
@@ -307,7 +311,7 @@ def update():
             run('git', '-c', 'core.hooksPath=/dev/null', 'checkout', '--detach', source['commit'], cwd=folder)
     recipe.materialize()
     recipe.restore()
-    print('Updated application and restored saved source commits and composition. Run ./bilibi build to choose new versions.')
+    print('Updated application and restored saved source commits and composition. Run ./bilibi check to choose new versions.')
 
 
 def remote_url(name):
@@ -425,7 +429,7 @@ def upgrade():
 def start():
     setup()
     status()
-    print('\nStarting local sources with the development seed. The next build will ask about new commits.', flush=True)
+    print('\nStarting local sources with the development seed. Run ./bilibi check before a release to choose new commits.', flush=True)
     # A development run must not compile a stale release record as its identity.
     # Keep the old machine-local record for inspection rather than deleting it.
     record = PLATFORM / '.local/composition'
@@ -473,7 +477,7 @@ def add_explicit(component, kind, source, commit):
     if descriptor.get('id') != component or descriptor.get('layer') != {'domains': 'domain', 'extensions': 'extension'}[kind]:
         raise ValueError(f'{folder}/bilibi.container.toml does not match the requested component; '
                          'checkout retained for inspection')
-    print(f'Added {component} at {folder}. Run ./bilibi start. Commit and push component edits before ./bilibi build.')
+    print(f'Added {component} at {folder}. Run ./bilibi start. Commit and push component edits before ./bilibi check.')
 
 
 def add(component, kind=None, source=None, commit=None):
@@ -503,7 +507,7 @@ def add(component, kind=None, source=None, commit=None):
     if not listing:
         raise ValueError(f'{component}: remote has no HEAD')
     recipe.clone({'url': url, 'commit': listing[0]}, folder)
-    print(f'Added {component} at {folder}. Run ./bilibi start. Commit and push component edits before ./bilibi build.')
+    print(f'Added {component} at {folder}. Run ./bilibi start. Commit and push component edits before ./bilibi check.')
 
 
 def selected_recipe():
@@ -531,7 +535,7 @@ def selected_recipe():
             _, layer, identity = name.split('/')
             selected[layer].append({'id': identity, **source})
     if pending:
-        generated = generated_output('build')
+        generated = generated_output('check')
         if any(path not in generated or (PLATFORM / path).read_bytes() != generated[path]
                or (PLATFORM / path).is_symlink()
                or run('git', 'diff', '--summary', '--', path, cwd=PLATFORM, capture=True) for path in pending):
@@ -623,8 +627,8 @@ def candidate_environment():
     return env
 
 
-def build(command, yes=False):
-    script = 'scripts/check.sh' if command == 'check' else 'scripts/build.sh'
+def check(yes=False):
+    script = 'scripts/check.sh'
     target = Path(os.environ.get('CARGO_TARGET_DIR', BUILD / 'target')).resolve()
     if target.is_relative_to(recipe.SOURCES):
         raise ValueError('CARGO_TARGET_DIR must be outside sources/; use build/target for outputs')
@@ -640,15 +644,15 @@ def build(command, yes=False):
         if accepted:
             (candidate / 'setup.toml').write_text(serialize(selected))
             subprocess.run(['python3', str(candidate / 'scripts/recipe.py'), 'materialize'], env=env, check=True)
-            subprocess.run(['bash', str(candidate / 'scripts/builder.sh'), 'python3', 'scripts/recipe.py', 'record-candidate'], env=env, check=True)
+            subprocess.run(['bash', str(candidate / 'scripts/builder.sh'), '--development', 'python3', 'scripts/recipe.py', 'record-candidate'], env=env, check=True)
             recipe.check_record(candidate)
         # Reuse downloads and compiler output, but obtain source from the candidate record.
         subprocess.run(['python3', str(candidate / 'scripts/recipe.py'), 'materialize'], env=env, check=True)
         subprocess.run(['python3', str(candidate / 'scripts/recipe.py'), 'verify-remote'], env=env, check=True)
-        subprocess.run(['bash', str(candidate / 'scripts/builder.sh'), script], env=env, check=True)
+        subprocess.run(['bash', str(candidate / 'scripts/builder.sh'), '--development', script], env=env, check=True)
         if accepted:
             save_record(candidate, observed, before)
-        mark_successful_build(candidate)
+        mark_successful_check(candidate)
 
 
 def release(tag):
@@ -661,8 +665,8 @@ def release(tag):
     if changed:
         raise ValueError('Commit the successful build record, review it on the default branch, and push it before releasing. Changed files: '
                          + ', '.join(sorted(changed)) + '.')
-    if not successful_build_matches():
-        raise ValueError('Run ./bilibi build first.')
+    if not successful_check_matches():
+        raise ValueError('Run ./bilibi check first.')
     recipe.check_record()
     publish.check_new_tag(tag, ROOT)
     publish.start_release(tag, ROOT)
@@ -675,18 +679,18 @@ def record_fingerprint(root):
     return digest.hexdigest()
 
 
-def successful_build_matches():
+def successful_check_matches():
     try:
-        saved = (ROOT / '.local/successful-build').read_text().strip()
+        saved = (ROOT / '.local/successful-check').read_text().strip()
     except OSError:
         return False
     return saved == record_fingerprint(ROOT)
 
 
-def mark_successful_build(candidate):
+def mark_successful_check(candidate):
     local = ROOT / '.local'
-    marker = local / 'successful-build'
-    with tempfile.NamedTemporaryFile(prefix='.bilibi-successful-build-', dir=local, mode='w', delete=False) as stream:
+    marker = local / 'successful-check'
+    with tempfile.NamedTemporaryFile(prefix='.bilibi-successful-check-', dir=local, mode='w', delete=False) as stream:
         pending = Path(stream.name)
         stream.write(record_fingerprint(candidate) + '\n')
     try:
@@ -699,10 +703,10 @@ def save_record(candidate, observed, before):
     recipe.recipe(candidate)
     recipe.check_record(candidate)
     if selected_recipe() != observed:
-        raise ValueError('Sources changed while building. The previous build record was kept. Run ./bilibi build again.')
+        raise ValueError('Sources changed while building. The previous build record was kept. Run ./bilibi check again.')
     # Concurrent hand edits must never be overwritten by the prepared candidate.
     if any((ROOT / name).read_bytes() != data for name, data in before.items()):
-        raise ValueError('The build record changed while building. Your changes were kept. Run ./bilibi build again.')
+        raise ValueError('The build record changed while building. Your changes were kept. Run ./bilibi check again.')
     try:
         for name in before:
             replacement = ROOT / name
@@ -718,7 +722,8 @@ def save_record(candidate, observed, before):
         for name, data in before.items():
             (ROOT / name).write_bytes(data)
         raise
-    print('Saved the build versions. Run ./bilibi release --tag setup-vX.Y.Z after checking them.')
+    print('Saved the checked build versions. Commit and review this record on the default branch, '
+          'then run ./bilibi release --tag setup-vX.Y.Z.')
 
 
 def check_staged():
@@ -732,17 +737,17 @@ def check_staged():
 
 def main():
     parser = argparse.ArgumentParser(prog='./bilibi', description=__doc__)
-    parser.add_argument('command', nargs='?', choices=('help', 'start', 'update', 'upgrade', 'add', 'status', 'setup', 'check', 'build', 'release', 'check-staged'),
-                        metavar='{help,start,update,upgrade,add,status,setup,check,build,release}')
+    parser.add_argument('command', nargs='?', choices=('help', 'start', 'update', 'upgrade', 'add', 'status', 'setup', 'check', 'release', 'check-staged'),
+                        metavar='{help,start,update,upgrade,add,status,setup,check,release}')
     parser.add_argument('component', nargs='?')
     parser.add_argument('--kind', choices=('domains', 'extensions'), help='add: component mount kind; give with --source and --commit')
     parser.add_argument('--source', help='add: official BelimbingProject repository URL from Software')
     parser.add_argument('--commit', help='add: exact full lowercase commit ID from Software')
-    parser.add_argument('--yes', action='store_true', help='build/check: use all new pushed commits without asking')
+    parser.add_argument('--yes', action='store_true', help='check: use all new pushed commits without asking')
     parser.add_argument('--tag', help='release: a new version, such as setup-v1.0.0')
     args = parser.parse_args()
-    if args.yes and args.command not in ('build', 'check'):
-        parser.error('--yes is only for ./bilibi build and ./bilibi check')
+    if args.yes and args.command != 'check':
+        parser.error('--yes is only for ./bilibi check')
     if (args.command == 'release') != (args.tag is not None):
         parser.error('Use ./bilibi release --tag setup-vX.Y.Z; --tag is only for release')
     supplied = (args.kind is not None, args.source is not None, args.commit is not None)
@@ -772,11 +777,11 @@ def main():
               '\n'
               'Before a release\n'
               '  check         Choose versions, then build and test against an empty test\n'
-              '                database.\n'
-              '  build         Ask about new commits, save your choices, and build.\n'
-              '                For scripts, use build --yes or check --yes to accept new commits.\n'
+              '                database, and save the successful release record.\n'
+              '                For scripts, use check --yes to accept new commits.\n'
               '  release --tag setup-vX.Y.Z\n'
-              '                Commit the build record and start the release on GitHub.\n'
+              '                After committing and reviewing the checked record, start the\n'
+              '                release on GitHub.\n'
               '                docs/guides/releasing.md explains the final publish step.\n\n'
               'Stay current with the maker\n'
               '  upgrade       For applications without maker.lock: merge the maker\'s files on a\n'
@@ -799,8 +804,8 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX)
         if args.command == 'add':
             add(args.component, args.kind, args.source, args.commit)
-        elif args.command in ('check', 'build'):
-            build(args.command, args.yes)
+        elif args.command == 'check':
+            check(args.yes)
         elif args.command == 'release':
             release(args.tag)
         else:
