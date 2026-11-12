@@ -11,17 +11,22 @@ from pathlib import Path
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 import uuid
 
+import app_state
 import arch_prerequisites
 import choose as guide
 import github_release
+import jobs
 import native_builder
 import platform_upgrade
+import previews
 import private_sources
 import recipe
 import publish
@@ -76,6 +81,19 @@ def moved_notice():
         print(f'{", ".join(moved)} {verb} new commits since the last build. Run ./bilibi check to choose versions.')
 
 
+def current_state():
+    """This copy as data, read without changing anything; see app_state.state()."""
+    return app_state.state(ROOT, PLATFORM, repositories, lambda: recipe.recipe()[1])
+
+
+def unsaved_refusal(names):
+    it, verb = ('it', 'is') if len(names) == 1 else ('them', 'are')
+    return (f'{", ".join(names)} {verb} added here but not in the saved versions, so a release would leave {it} '
+            f'out. Commit and push {it}, then run ./bilibi check to save and test {it} (./bilibi pin saves without '
+            f'testing), commit the record and release again. If you do not want {it} in this application, move '
+            f'{it} out of sources/ yourself.')
+
+
 def status():
     _, sources = recipe.recipe()
     saved = dict(sources)
@@ -103,6 +121,9 @@ def status():
     moved_notice()
     for name in saved.keys() - found:
         print(f'\n{name}: {PLATFORM / name} — missing; run ./bilibi setup.')
+    running = app_state.run_state(ROOT, PLATFORM)['state']
+    where = app_state.address(ROOT, PLATFORM)['url']
+    print(f'\nRun: {running}' + (f' at {where}' if running != 'stopped' else f'; ./bilibi start serves {where}'))
 
 
 def hooks():
@@ -338,7 +359,7 @@ def connect_private_sources():
     private_sources.connect(application_repository('connect-private-sources'))
 
 
-def pin(moved):
+def pin(moved, command='upgrade'):
     """The three record files for moved versions, prepared in a candidate as ./bilibi check does, without a build.
 
     The candidate uses the tooling that is running now: the reviewed default branch, or the
@@ -356,8 +377,9 @@ def pin(moved):
                             'scripts/recipe.py', 'record-candidate'], env=env, check=True)
             recipe.check_record(candidate)
         except (ValueError, subprocess.CalledProcessError) as error:
-            raise ValueError(f'{ROOT}: cannot pin the new Platform versions ({error}); nothing was changed. Fix the '
-                             'cause shown above, then rerun ./bilibi upgrade') from error
+            what = 'the new Platform versions' if command == 'upgrade' else 'these versions'
+            raise ValueError(f'{ROOT}: cannot pin {what} ({error}); nothing was changed. Fix the '
+                             f'cause shown above, then rerun ./bilibi {command}') from error
         return {name: (candidate / name).read_bytes() for name in RECORD_FILES}
 
 
@@ -616,7 +638,60 @@ def first_start():
     choose(then_start=False)
 
 
+def start_background():
+    """Start this copy as a background job, or report the run it already has."""
+    plan = previews.preview(sys.modules[__name__], 'start')
+    if plan.get('nothing'):
+        print(plan['nothing'])
+        return None
+    if plan.get('blocked'):
+        raise ValueError(plan['blocked'])
+    job = jobs.launch(ROOT, ['start'], kind='run')
+    print(f'Starting in the background as job {job["id"]}; it will serve {plan["target"]["address"]}. '
+          './bilibi status shows when it is ready, ./bilibi logs shows its output, and ./bilibi stop stops it.')
+    return job
+
+
+def stop(yes=False):
+    """Stop this copy's own run, and nothing else: one recorded process, never a name."""
+    plan = previews.preview(sys.modules[__name__], 'stop')
+    if plan.get('nothing'):
+        print(plan['nothing'])
+        return
+    if plan.get('blocked'):
+        raise ValueError(plan['blocked'] + ' Nothing was stopped.')
+    confirm(plan, yes)
+    run = app_state.read_json(ROOT / '.local/run.json')
+    if not app_state.alive(run):
+        print('This copy stopped by itself in the meantime.')
+        return
+    os.kill(run['pid'], signal.SIGTERM)
+    deadline = time.monotonic() + 60
+    while app_state.alive(run) and time.monotonic() < deadline:
+        time.sleep(0.2)
+    if app_state.alive(run):
+        raise ValueError(f'Process {run["pid"]} was asked to stop but is still shutting down after a minute. Nothing '
+                         'was forced; run ./bilibi status to see whether it has stopped.')
+    print('Stopped this copy. Its database, keys, uploaded files and sources are kept; ./bilibi start runs it again.')
+
+
+def confirm(plan, yes):
+    """Show the preview and ask at the terminal; --yes is the answer where there is no terminal."""
+    print(previews.render(plan), flush=True)
+    if yes:
+        return
+    if not sys.stdin.isatty():
+        raise ValueError(f'There is no keyboard to confirm this. Run ./bilibi {" ".join(plan["command"])} to go ahead.')
+    try:
+        answer = input('Go ahead? (y/n) ').strip().lower()
+    except EOFError:
+        answer = ''
+    if answer not in ('y', 'yes'):
+        raise ValueError('Stopped; nothing was changed.')
+
+
 def start():
+    app_state.record_run(ROOT)
     first_start()
     setup()
     status()
@@ -638,8 +713,9 @@ def add_explicit(component, kind, source, commit):
         raise ValueError('use a component ID from catalogue.json, for example: ./bilibi add finance')
     if not re.fullmatch(r'[0-9a-f]{40}', commit):
         raise ValueError('--commit must be a full 40-character lowercase commit ID')
-    if not OFFICIAL.fullmatch(source):
-        raise ValueError(f'{component} is not an official BelimbingProject repository; use the manual mounting guide')
+    official = bool(OFFICIAL.fullmatch(source))
+    if not official and previews.source_problem(source):
+        raise ValueError(previews.source_problem(source))
     recipe.materialize()
     hooks()
     folder = PLATFORM / 'apps' / kind / component
@@ -658,7 +734,12 @@ def add_explicit(component, kind, source, commit):
                              'nothing was changed')
         print(f'Keeping existing checkout, branch and edits: {folder}', flush=True)
     else:
-        run('git', 'clone', '--', source.removesuffix('.git') + '.git', folder)
+        try:
+            run('git', 'clone', '--', source.removesuffix('.git') + '.git', folder)
+        except subprocess.CalledProcessError:
+            raise ValueError(f'Cannot clone {source} with your existing Git sign-in; see the Git message above. Nothing '
+                             f'was added. Check that you can read it with git ls-remote {source}; for GitHub, sign in '
+                             'with gh auth login and gh auth setup-git, then retry') from None
         try:
             run('git', 'checkout', '--detach', commit, cwd=folder)
         except subprocess.CalledProcessError:
@@ -669,6 +750,9 @@ def add_explicit(component, kind, source, commit):
         raise ValueError(f'{folder}/bilibi.container.toml does not match the requested component; '
                          'checkout retained for inspection')
     print(f'Added {component} at {folder}. Run ./bilibi start. Commit and push component edits before ./bilibi check.')
+    if not official:
+        print(f'{component} is a private source: it is mounted, but not saved for release yet. Run ./bilibi pin to save '
+              f'it in setup.toml. {previews.PRIVATE_NOTE}')
 
 
 def add(component, kind=None, source=None, commit=None):
@@ -818,6 +902,23 @@ def candidate_environment():
     return env
 
 
+def pin_command(yes=False):
+    """Save the mounted versions in the three record files together, without building them."""
+    selected, observed, before, accepted = choose_versions(yes)
+    if not accepted:
+        print('Nothing was pinned: the saved versions are unchanged.')
+        return
+    files = pin(selected, command='pin')
+    if selected_recipe() != observed:
+        raise ValueError('Sources changed while pinning. The previous saved versions were kept. Run ./bilibi pin again.')
+    write_record(files, before)
+    print('Pinned: setup.toml, composition/manifest.txt and composition/Cargo.lock now name the versions above. '
+          'Nothing was built or tested: run ./bilibi check before a release, then commit the three files.')
+    private = [source['url'] for _, source in recipe.recipe()[1] if not OFFICIAL.fullmatch(source['url'])]
+    if private:
+        print(f'Private sources saved: {", ".join(private)}. {previews.PRIVATE_NOTE}')
+
+
 def check(yes=False):
     script = 'scripts/check.sh'
     target = Path(os.environ.get('CARGO_TARGET_DIR', BUILD / 'target')).resolve()
@@ -858,6 +959,10 @@ def release_checks(tag=None):
     if changed:
         raise ValueError('Commit the successful build record, review it on the default branch, and push it before releasing. Changed files: '
                          + ', '.join(sorted(changed)) + '.')
+    saved, _ = recipe.recipe()
+    unsaved = [part_name(name) for name, _ in repositories() if name not in entries(saved)]
+    if unsaved:
+        raise ValueError(unsaved_refusal(unsaved))
     if not successful_check_matches():
         raise ValueError('Run ./bilibi check first.')
     recipe.check_record()
@@ -898,14 +1003,21 @@ def save_record(candidate, observed, before):
     if selected_recipe() != observed:
         raise ValueError('Sources changed while building. The previous build record was kept. Run ./bilibi check again.')
     # Concurrent hand edits must never be overwritten by the prepared candidate.
+    write_record({name: (candidate / name).read_bytes() for name in before}, before)
+    print('Saved the checked build versions. Commit and review this record on the default branch, '
+          'then run ./bilibi release.')
+
+
+def write_record(files, before):
+    """Replace the three record files together; any failure puts the earlier ones back."""
     if any((ROOT / name).read_bytes() != data for name, data in before.items()):
-        raise ValueError('The build record changed while building. Your changes were kept. Run ./bilibi check again.')
+        raise ValueError('The build record changed while building. Your changes were kept. Run the command again.')
     try:
         for name in before:
             replacement = ROOT / name
             with tempfile.NamedTemporaryFile(prefix='.bilibi-record-', dir=replacement.parent, delete=False) as stream:
                 pending = Path(stream.name)
-                stream.write((candidate / name).read_bytes())
+                stream.write(files[name])
             try:
                 pending.chmod(replacement.stat().st_mode & 0o777)
                 pending.replace(replacement)
@@ -915,8 +1027,6 @@ def save_record(candidate, observed, before):
         for name, data in before.items():
             (ROOT / name).write_bytes(data)
         raise
-    print('Saved the checked build versions. Commit and review this record on the default branch, '
-          'then run ./bilibi release.')
 
 
 def check_staged():
@@ -928,23 +1038,69 @@ def check_staged():
         recipe.check_record(index)
 
 
+def show_jobs(as_json):
+    found = jobs.listing(ROOT, 20)
+    if as_json:
+        print(json.dumps(found, indent=1))
+    elif not found:
+        print('No background jobs have run in this copy.')
+    for job in ([] if as_json else found):
+        began = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(job['started_at']))
+        print(f'{job["id"]}  {job["state"]:<11}  {began}  ./bilibi {" ".join(job["command"])}')
+
+
+def show_logs(identity, lines):
+    """The end of a job's output, or of this copy's current run; credentials are removed."""
+    run = app_state.run_state(ROOT, PLATFORM)
+    if identity is None:
+        identity = run.get('job') or next((job['id'] for job in jobs.listing(ROOT, 30) if job['kind'] == 'run'), None)
+        if identity is None:
+            print(f'Run: {run["state"]}. ' + ('Its output is in the terminal that runs ./bilibi start.'
+                                              if run['state'] != 'stopped' else 'No background run has been recorded here.'))
+            if run.get('output'):
+                print(run['output'])
+            return
+    job = jobs.read(ROOT, identity)
+    if job is None:
+        raise ValueError(f'There is no job {identity} in this copy; ./bilibi jobs lists them.')
+    print(f'Job {job["id"]} (./bilibi {" ".join(job["command"])}): {job["state"]}'
+          + (f', exit code {job["exit_code"]}' if job.get('exit_code') is not None else ''))
+    print(jobs.log(ROOT, identity, lines))
+
+
+COMMANDS = ('help', 'start', 'stop', 'choose', 'update', 'upgrade', 'own', 'add', 'status', 'setup', 'pin', 'check',
+            'release', 'connect-private-sources', 'logs', 'jobs', 'insight', 'mcp')
+
+
 def main():
     parser = argparse.ArgumentParser(prog='./bilibi', description=__doc__)
-    parser.add_argument('command', nargs='?', choices=('help', 'start', 'choose', 'update', 'upgrade', 'own', 'add', 'status', 'setup', 'check', 'release',
-                                                       'connect-private-sources', 'check-staged'),
-                        metavar='{help,start,choose,update,upgrade,own,add,status,setup,check,release,connect-private-sources}')
+    parser.add_argument('command', nargs='?', choices=(*COMMANDS, 'check-staged'), metavar='{' + ','.join(COMMANDS) + '}')
     parser.add_argument('component', nargs='?')
     parser.add_argument('--kind', choices=('domains', 'extensions'), help='add: component mount kind; give with --source and --commit')
-    parser.add_argument('--source', help='add: official BelimbingProject repository URL from Software')
-    parser.add_argument('--commit', help='add: exact full lowercase commit ID from Software')
-    parser.add_argument('--yes', action='store_true', help='check: use all new pushed commits without asking; '
-                        'release: release --tag without asking')
+    parser.add_argument('--source', help='add: HTTPS repository URL without credentials, from Software or your own')
+    parser.add_argument('--commit', help='add: exact full lowercase commit ID')
+    parser.add_argument('--yes', action='store_true', help='check, pin: use all new pushed commits without asking; '
+                        'stop: stop without asking; release: release --tag without asking')
     parser.add_argument('--tag', help='release: the version, such as setup-v1.0.0 (default: suggested)')
+    parser.add_argument('--draft', action='store_true', help='release: build the release but leave it a draft; '
+                        'release --tag again publishes it')
+    parser.add_argument('--preview', action='store_true', help='show what the command would do and change nothing')
+    parser.add_argument('--background', action='store_true', help='start: run as a background job')
+    parser.add_argument('--json', action='store_true', help='status, jobs, insight: print data for a program')
+    parser.add_argument('--lines', type=int, default=200, help='logs: how many lines to show (default 200)')
     args = parser.parse_args()
-    if args.yes and args.command not in ('check', 'release'):
-        parser.error('--yes is only for ./bilibi check and ./bilibi release')
+    if args.yes and args.command not in ('check', 'release', 'pin', 'stop'):
+        parser.error('--yes is only for ./bilibi check, pin, stop and release')
     if args.tag is not None and args.command != 'release':
         parser.error('--tag is only for ./bilibi release')
+    if args.draft and args.command != 'release':
+        parser.error('--draft is only for ./bilibi release')
+    if args.background and args.command != 'start':
+        parser.error('--background is only for ./bilibi start')
+    if args.json and args.command not in ('status', 'jobs', 'insight'):
+        parser.error('--json is only for ./bilibi status, jobs and insight')
+    if args.preview and args.command not in previews.OPERATIONS:
+        parser.error('--preview is for: ' + ', '.join(name for name in previews.OPERATIONS if name in COMMANDS))
     if args.command == 'release' and args.yes and args.tag is None:
         parser.error('Use ./bilibi release --tag setup-vX.Y.Z --yes to release without asking')
     supplied = (args.kind is not None, args.source is not None, args.commit is not None)
@@ -954,9 +1110,10 @@ def main():
         raise ValueError('--kind, --source and --commit go together; give all three or none')
     if args.command == 'own' and args.component is None:
         parser.error('Use ./bilibi own <owner>/<name>, such as ./bilibi own your-company/my-bilibi')
-    if args.command not in ('add', 'own') and args.component is not None or args.command == 'add' and args.component is None:
-        parser.error('Use ./bilibi add <component> [--kind domains|extensions --source <url> --commit <sha>] or '
-                     './bilibi own <owner>/<name>; other commands take no arguments')
+    if (args.command not in ('add', 'own', 'logs') and args.component is not None
+            or args.command == 'add' and args.component is None):
+        parser.error('Use ./bilibi add <component> [--kind domains|extensions --source <url> --commit <sha>], '
+                     './bilibi own <owner>/<name> or ./bilibi logs [<job>]; other commands take no arguments')
     if args.command in (None, 'help'):
         print('This is a Bilibi application: your own product, built on Bilibi.\n'
               'To change Bilibi itself, work in https://github.com/BelimbingProject/bilibi instead.\n\n'
@@ -968,7 +1125,10 @@ def main():
               '                want, then add them and start. The first start offers it.\n'
               '  add <name>    Add a Domain or Extension, such as: ./bilibi add finance\n'
               '                Or paste the add command that the Software page shows.\n'
+              '                For your own private one, give --kind, --source and --commit.\n'
               '                Then run ./bilibi start again to use it.\n'
+              '  stop          Stop this copy\'s run, and only this copy\'s. Data is kept.\n'
+              '  logs [<job>]  Show the end of this copy\'s run output, or of a background job.\n'
               '  status        List the Platform, Domains and Extensions, with their branches,\n'
               '                your uncommitted changes, and any difference from the saved versions.\n\n'
               'Make it yours\n'
@@ -983,6 +1143,9 @@ def main():
               '                --to <commit> or --back returns to an earlier maker.\n'
               '\n'
               'Before a release\n'
+              '  pin           Save the versions you have mounted, including a private Domain\n'
+              '                or Extension, in setup.toml and composition/ together, without\n'
+              '                building. Check still has to pass before a release.\n'
               '  check         Choose versions, then build and test against an empty test\n'
               '                database, and save the successful release record.\n'
               '                For scripts, use check --yes to accept new commits.\n'
@@ -990,6 +1153,7 @@ def main():
               '                the next version, push its tag, wait for the GitHub build,\n'
               '                publish it and download the file to upload on Software.\n'
               '                For scripts, use release --tag setup-vX.Y.Z --yes.\n'
+              '                --draft stops before publishing; release --tag publishes.\n'
               '  connect-private-sources\n'
               '                Let GitHub checks read private Domains and Extensions: creates\n'
               '                a read-only GitHub App and stores it in this repository.\n'
@@ -999,13 +1163,52 @@ def main():
               '                recommended release, show its upgrade notes and, without maker.lock,\n'
               '                merge the maker\'s files: one pull request for you to review.\n'
               '                docs/guides/maker-updates.md explains update and upgrade.\n\n'
+              'With an AI assistant\n'
+              '  mcp           Serve these commands to Claude or Codex on this computer;\n'
+              '                docs/guides/ai-assistants.md shows the registration.\n'
+              '  <command> --preview\n'
+              '                Show what start, stop, add, update, pin, check, release or\n'
+              '                upgrade would do, and change nothing.\n'
+              '  start --background, jobs, insight\n'
+              '                Run in the background, list background jobs, and show the\n'
+              '                run\'s processor, memory, disk and database use.\n'
+              '  status --json The same facts as status, for a program.\n\n'
               'Less often\n'
               '  setup         Adopt shared tooling once, then prepare sources and prerequisites.\n'
               '                Reruns use maker.lock; no build, start or database migration.\n'
               '  help          Show this list.')
         return
+    if args.preview:
+        arguments = {'component': args.component, 'kind': args.kind, 'source': args.source,
+                     'commit': args.commit, 'tag': args.tag}
+        allowed = previews.OPERATIONS[args.command]
+        print(previews.render(previews.preview(sys.modules[__name__], args.command,
+                                               {key: arguments[key] for key in allowed})))
+        return
     if args.command == 'status':
-        status()
+        print(json.dumps(current_state(), indent=1)) if args.json else status()
+        return
+    if args.command == 'mcp':
+        import mcp_server
+        mcp_server.serve(sys.modules[__name__])
+        return
+    if args.command == 'jobs':
+        show_jobs(args.json)
+        return
+    if args.command == 'logs':
+        show_logs(args.component, args.lines)
+        return
+    if args.command == 'insight':
+        import insight
+        measured = insight.measure(ROOT, PLATFORM, BUILD)
+        print(json.dumps(measured, indent=1) if args.json else insight.render(measured))
+        return
+    if args.command == 'stop':
+        # Not under the workspace lock: a start that is still preparing holds it.
+        stop(args.yes)
+        return
+    if args.command == 'start' and args.background:
+        start_background()
         return
     if args.command == 'check-staged':
         check_staged()
@@ -1025,11 +1228,13 @@ def main():
             own(args.component)
         elif args.command == 'check':
             check(args.yes)
+        elif args.command == 'pin':
+            pin_command(args.yes)
         else:
             globals()[args.command]()
     if args.command == 'release':
         # The tagged commit is fixed now; waiting for GitHub must not block start or status.
-        github_release.release(TOOLS, ROOT, repository, branch, args.tag, args.yes)
+        github_release.release(TOOLS, ROOT, repository, branch, args.tag, args.yes, draft=args.draft)
 
 
 if __name__ == '__main__':

@@ -23,6 +23,8 @@ Say **yes** to use those commits and save them, or **no** to build that part's s
 
 When you accept a change, the command fetches a candidate from the declared HTTPS remotes without reusing local Git objects. It checks assets, resolves dependencies in the recorded builder and validates the record and lock. It builds and checks a separate checkout of that candidate, and only after the command succeeds does it replace `setup.toml`, `composition/manifest.txt` and `composition/Cargo.lock`. A failed candidate, compilation or check leaves the previous saved set intact. Release is allowed only when the current record matches the record from the last successful check; otherwise run `./bilibi check` first.
 
+To save your choices now and test later, run `./bilibi pin`. It asks the same question, fetches the same candidate and replaces the same three files together, but it builds and tests nothing, so a release still needs a passed `./bilibi check` of that record. Pin is how a newly added private Domain or Extension gets into `setup.toml`.
+
 Each source URL must use HTTPS without credentials and each commit must be a full lowercase 40-character ID. Domains and Extensions also need their declared `id`. Domains and Extensions are optional. Keep each part's `origin` at the URL in the saved record.
 
 Checks with no accepted changes restore the saved dependency lock. They do not choose new dependencies. The release workflow on GitHub always builds only the committed record, even if `--yes` is supplied. It never asks about local sources or updates the record.
@@ -62,10 +64,11 @@ After check succeeds, commit `setup.toml`, `composition/manifest.txt` and `compo
 
 Release walks you through every step and prints what it is doing:
 
-1. **Checks your checkout.** It refuses any uncommitted file, a commit that is not on the remote default branch, a record that differs from your last successful `./bilibi check`, a copy that is behind the remote default branch, and a default branch whose **Check setup** run for this exact commit is missing, still running or did not pass.
+1. **Checks your checkout.** It refuses a Domain or Extension that is added in `sources/` but not saved, because the release would leave it out. It also refuses any uncommitted file, a commit that is not on the remote default branch, a record that differs from your last successful `./bilibi check`, a copy that is behind the remote default branch, and a default branch whose **Check setup** run for this exact commit is missing, still running or did not pass.
 2. **Suggests the next version.** For example, after `setup-v1.2.3` it offers `setup-v1.2.4`; the first release is `setup-v1.0.0`. Press Enter to accept it, type another version such as `setup-v1.3.0`, or type `no` to stop without changing anything.
 3. **Pushes the tag** to `origin`. This starts the **Release setup** build on GitHub.
 4. **Waits for the build** and shows its link. The build takes a while. You can stop waiting with Ctrl+C; the build carries on, and `./bilibi release --tag setup-v1.2.4` continues from where you left off.
+   To decide about publishing later, run `./bilibi release --draft`: it stops here, with the built release waiting as a draft on GitHub, and `./bilibi release --tag setup-v1.2.4` publishes it. An AI assistant always releases this way, so publishing is a second confirmation.
 5. **Publishes the release.** It downloads every asset into `.local/releases/setup-v1.2.4/`, checks each one against `SHA256SUMS` and GitHub's own digests, checks that the tag and recipe name this commit, and then publishes the draft with `scripts/publish.py`. GitHub must then report the release as immutable.
 6. **Tells you what to install.** It prints the exact archive to upload, its SHA-256, and the steps on each server's Software page. [Installing a release](installing.md) explains those steps.
 

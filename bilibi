@@ -434,7 +434,7 @@ def main():
             fcntl.flock(lock, fcntl.LOCK_EX)
             if command == ['setup'] and not shared:
                 adopt(state)
-            if command[:1] == ['update']:
+            if command[:1] == ['update'] and '--preview' not in command:
                 # update holds the lock throughout, so no other command sees a half-moved record.
                 sys.exit(update(state, command[1:]))
             selection = recorded()

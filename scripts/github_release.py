@@ -193,7 +193,7 @@ Upload the same file to Staging and Production. The server checks its checksum a
 GitHub build provenance again before it installs; Undo on the Software page goes back.''')
 
 
-def release(tools, root, repository, branch, tag, yes):
+def release(tools, root, repository, branch, tag, yes, draft=False):
     commit = git(root, 'rev-parse', 'HEAD')
     on_origin = remote_tag(root, tag) if tag else None
     if on_origin and on_origin != commit:
@@ -210,6 +210,11 @@ def release(tools, root, repository, branch, tag, yes):
         publish.check_new_tag(tag, root)
         publish.start_release(tag, root)
     wait_for_build(repository, tag, commit)
+    if draft:
+        # Publishing is its own decision: a published release can never be changed.
+        print(f'{tag} is built and waits as a draft on GitHub; nothing is published. '
+              f'To publish it, run ./bilibi release --tag {tag}')
+        return
     finish(repository, tag, root)
 
 
